@@ -1,0 +1,69 @@
+body { background: #f6f7f9; }
+.card { border-radius: 14px; }
+.nav-tabs .nav-link { border-top-left-radius: 10px; border-top-right-radius: 10px; }
+.form-check { margin-bottom: 0.25rem; }
+input[type="text"], input[type="number"], select { width: 100%; }
+
+/* Splash login page */
+.popcase-splash {
+  min-height: 100vh;
+  background: radial-gradient(1200px 700px at 20% 15%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.00) 55%),
+              linear-gradient(180deg, #0b1f3b 0%, #102a4f 100%);
+}
+
+.splash-card {
+  border-radius: 16px;
+}
+.splash-left h1 {
+  letter-spacing: -0.02em;
+}
+.splash-left .badge {
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.splash-left ul li {
+  margin-bottom: .35rem;
+}
+.splash-muted {
+  color: rgba(255,255,255,.85);
+}
+
+/* Splash login page enhancements */
+.popcase-splash .container { max-width: 1140px; }
+.splash-left .accordion-button { border-radius: 12px; }
+.splash-left .accordion-item { border-radius: 14px; overflow: hidden; }
+.splash-left .accordion-button:not(.collapsed) { box-shadow: none; }
+.splash-left .accordion-body ul { margin-bottom: 0; }
+.logo-round {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 9999px;
+  background: white;
+}
+
+/* Splash stability tweaks */
+.splash-left { padding-bottom: 1rem; }
+.accordion-button:focus { box-shadow: none; }
+
+.popcase-tree .fw-semibold { font-size: 0.95rem; }
+.popcase-tree .form-check { margin-bottom: 0.25rem; }
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  text-decoration: underline;
+}
+
+.table-fixed {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table-fixed th,
+.table-fixed td {
+  white-space: nowrap;
+}
+

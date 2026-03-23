@@ -1,0 +1,321 @@
+    {% extends "popcase/base.html" %}
+    {% block title %}Filters | PopCASE{% endblock %}
+
+    {% block content %}
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">Filters</h4>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'popcase:reset' %}">Reset</a>
+      </div>
+      <ul class="nav nav-tabs mb-3">
+  {% for s in steps %}
+    {% if s == current_step %}
+      <li class="nav-item"><span class="nav-link active">{{ s|title }}</span></li>
+    {% else %}
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'popcase:wizard_step' step=s %}">{{ s|title }}</a>
+      </li>
+    {% endif %}
+  {% endfor %}
+</ul>
+
+
+      <form method="post">
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-lg-5">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h6 class="text-uppercase text-secondary">Demographics</h6>
+
+                <div class="mb-3">
+                  <label class="form-label d-block">{{ form.sex.label }}</label>
+                  {% for radio in form.sex %}
+                    <div class="form-check form-check-inline">
+                      {{ radio.tag  }}
+                      <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                    </div>
+                  {% endfor %}
+                </div>
+
+                <div class="row">
+                  <div class="col-6 mb-3">
+                    <label class="form-label" for="{{ form.age_from.id_for_label }}">{{ form.age_from.label }}</label>
+                    {{ form.age_from }}
+                  </div>
+                  <div class="col-6 mb-3">
+                    <label class="form-label" for="{{ form.age_to.id_for_label }}">{{ form.age_to.label }}</label>
+                    {{ form.age_to }}
+                  </div>
+                  {% if form.age_to.errors %}<div class="text-danger small">{{ form.age_to.errors }}</div>{% endif %}
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label d-block">{{ form.race_ethnicity.label }}</label>
+                  {{ form.race_ethnicity }}
+                  <div class="form-text">Leave blank for All.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-7">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h6 class="text-uppercase text-secondary">Geography &amp; Disease Characteristics</h6>
+
+                <div class="mb-3">
+                  <label class="form-label" for="{{ form.geography.id_for_label }}">{{ form.geography.label }}</label>
+                  {{ form.geography }}
+                </div>
+
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="{{ form.dx_start.id_for_label }}">{{ form.dx_start.label }}</label>
+                    {{ form.dx_start }}
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="{{ form.dx_end.id_for_label }}">{{ form.dx_end.label }}</label>
+                    {{ form.dx_end }}
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">{{ form.cancer_types.label }}</label>
+                  <input type="text" id="cancer-type-search" class="form-control form-control-sm mt-2" placeholder="Search cancer types...">
+                </div>
+
+                <div id="cancer-tree" class="border rounded p-2" style="max-height: 360px; overflow:auto;">
+
+                {% for site, subs in cancer_tree.items %}
+                  <div class="cancer-site mb-2">
+
+                    <!-- TIER 1 -->
+                    <div class="form-check fw-semibold mt-2">
+                      <input class="form-check-input site-checkbox"
+                             type="checkbox"
+                             id="site_{{ forloop.counter }}">
+                      <label class="form-check-label"
+                             for="site_{{ forloop.counter }}">
+                        {{ site }}
+                      </label>
+                    </div>
+
+                    {% for sub, node in subs.items %}
+                      <div class="cancer-sub ms-4">
+
+                        {% if node.has_subsub %}
+                          <!-- TIER 2 (Parent only) -->
+                          <div class="form-check mt-1">
+                            <input class="form-check-input sub-checkbox"
+                                   type="checkbox"
+                                   id="sub_{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
+                            <label class="form-check-label"
+                                   for="sub_{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
+                              {{ sub }}
+                            </label>
+                          </div>
+
+                          <!-- TIER 3 -->
+                          <div class="ms-4">
+                            {% for subsub, leaves in node.children.items %}
+                              {% for leaf_key, leaf_label in leaves %}
+                                <div class="form-check mt-1">
+                                  <input class="form-check-input leaf-checkbox"
+                                         type="checkbox"
+                                         name="cancer_types"
+                                         value="{{ leaf_key }}"
+                                         id="leaf_{{ forloop.parentloop.parentloop.parentloop.counter }}_{{ forloop.parentloop.parentloop.counter }}_{{ forloop.counter }}"
+                                         {% if leaf_key in form.cancer_types.value %}checked{% endif %}>
+                                  <label class="form-check-label"
+                                         for="leaf_{{ forloop.parentloop.parentloop.parentloop.counter }}_{{ forloop.parentloop.parentloop.counter }}_{{ forloop.counter }}">
+                                    {{ leaf_label }}
+                                  </label>
+                                </div>
+                              {% endfor %}
+                            {% endfor %}
+                          </div>
+
+                        {% else %}
+                          <!-- TIER 2 IS THE LEAF (still submit leaf_key) -->
+                          <div class="ms-0">
+                            {% for subsub, leaves in node.children.items %}
+                              {% for leaf_key, leaf_label in leaves %}
+                                <div class="form-check mt-1">
+                                  <input class="form-check-input leaf-checkbox"
+                                         type="checkbox"
+                                         name="cancer_types"
+                                         value="{{ leaf_key }}"
+                                         id="leaf_{{ forloop.parentloop.parentloop.counter }}_{{ forloop.parentloop.counter }}_{{ forloop.counter }}"
+                                         {% if leaf_key in form.cancer_types.value %}checked{% endif %}>
+                                  <label class="form-check-label"
+                                         for="leaf_{{ forloop.parentloop.parentloop.counter }}_{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
+                                    {{ leaf_label }}
+                                  </label>
+                                </div>
+                              {% endfor %}
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+
+                  </div>
+                {% endfor %}
+
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label d-block">{{ form.stage.label }}</label>
+                  {{ form.stage }}
+                </div>
+
+                <div class="form-check mb-3">
+                  {{ form.exclude_multiple_primaries }}
+                  <label class="form-check-label" for="{{ form.exclude_multiple_primaries.id_for_label }}">
+                    {{ form.exclude_multiple_primaries.label }}
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between mt-3">
+          <button class="btn btn-outline-secondary" name="prev" value="1" type="submit">Back</button>
+          <button class="btn btn-primary" type="submit">Next</button>
+        </div>
+      </form>
+{#{% if form.errors %}#}
+{#  <div class="alert alert-danger">#}
+{#    {{ form.errors }}#}
+{#  </div>#}
+{#{% endif %}#}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const tree = document.getElementById("cancer-tree");
+  const searchInput = document.getElementById("cancer-type-search");
+  if (!tree) return;
+
+  function updateSubState(subContainer) {
+    const subCheckbox = subContainer.querySelector(".sub-checkbox");
+    if (!subCheckbox) return;
+
+    const leaves = subContainer.querySelectorAll(".leaf-checkbox");
+    const checkedLeaves = subContainer.querySelectorAll(".leaf-checkbox:checked");
+
+    if (!checkedLeaves.length) {
+      subCheckbox.checked = false;
+      subCheckbox.indeterminate = false;
+    } else if (checkedLeaves.length === leaves.length) {
+      subCheckbox.checked = true;
+      subCheckbox.indeterminate = false;
+    } else {
+      subCheckbox.checked = false;
+      subCheckbox.indeterminate = true;
+    }
+  }
+
+  function updateSiteState(siteContainer) {
+    const siteCheckbox = siteContainer.querySelector(".site-checkbox");
+    if (!siteCheckbox) return;
+
+    const allLeaves = siteContainer.querySelectorAll(".leaf-checkbox");
+    const checkedLeaves = siteContainer.querySelectorAll(".leaf-checkbox:checked");
+
+    if (!checkedLeaves.length) {
+      siteCheckbox.checked = false;
+      siteCheckbox.indeterminate = false;
+    } else if (checkedLeaves.length === allLeaves.length) {
+      siteCheckbox.checked = true;
+      siteCheckbox.indeterminate = false;
+    } else {
+      siteCheckbox.checked = false;
+      siteCheckbox.indeterminate = true;
+    }
+  }
+
+  tree.addEventListener("change", function (event) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+
+    if (target.classList.contains("site-checkbox")) {
+      const siteContainer = target.closest(".cancer-site");
+      if (!siteContainer) return;
+      siteContainer.querySelectorAll("input[type='checkbox']").forEach(cb => {
+        cb.checked = target.checked;
+        cb.indeterminate = false;
+      });
+      return;
+    }
+
+    if (target.classList.contains("sub-checkbox")) {
+      const subContainer = target.closest(".cancer-sub");
+      if (!subContainer) return;
+      subContainer.querySelectorAll(".leaf-checkbox").forEach(cb => {
+        cb.checked = target.checked;
+      });
+      target.indeterminate = false;
+      updateSiteState(target.closest(".cancer-site"));
+      return;
+    }
+
+    if (target.classList.contains("leaf-checkbox")) {
+      const subContainer = target.closest(".cancer-sub");
+      const siteContainer = target.closest(".cancer-site");
+      if (subContainer) updateSubState(subContainer);
+      if (siteContainer) updateSiteState(siteContainer);
+    }
+  });
+
+  tree.querySelectorAll(".cancer-sub").forEach(updateSubState);
+  tree.querySelectorAll(".cancer-site").forEach(updateSiteState);
+
+  if (searchInput) {
+    searchInput.addEventListener("input", function () {
+      const q = this.value.trim().toLowerCase();
+      tree.querySelectorAll(".cancer-site").forEach(site => {
+        const text = site.textContent.toLowerCase();
+        site.classList.toggle("d-none", !!q && !text.includes(q));
+      });
+    });
+  }
+});
+</script>
+
+<style>
+
+/* Base checkbox visibility */
+.form-check-input {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid #444 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+/* Checked */
+.form-check-input:checked {
+  background-color: #0d6efd !important;
+  border-color: #0d6efd !important;
+}
+
+/* FORCE GRAY indeterminate */
+.form-check-input:indeterminate {
+  background-color: #9e9e9e !important;
+  border-color: #9e9e9e !important;
+  box-shadow: none !important;
+}
+
+/* Make the dash white for contrast */
+.form-check-input:indeterminate::before {
+  background-color: white !important;
+}
+
+/* Optional: stronger border for dark mode */
+body.dark-mode .form-check-input {
+  border-color: #bbb !important;
+}
+
+</style>
+
+    {% endblock %}
