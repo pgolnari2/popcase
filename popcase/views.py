@@ -26,7 +26,17 @@ from .models import NaaccrPatientCensusLinking
 
 STEPS = ["geographic-level", "filters", "measures", "stratification"]
 PREVIEW_ROW_LIMIT = 250
-SUPPORTED_DISEASE_MEASURES = {"case_count", "pct_advanced", "pct_metastatic", "inc_rate", "inc_ci"}
+SUPPORTED_DISEASE_MEASURES = {
+    "case_count",
+    "pct_advanced",
+    "pct_advanced_ci",
+    "pct_metastatic",
+    "pct_metastatic_ci",
+    "inc_rate",
+    "inc_ci",
+    "mort_rate",
+    "mort_ci",
+}
 NORMALIZED_TOTAL_LEVELS = {None, "", "none", "total", "do_not_compare", "no_compare"}
 
 TRACT_HEADER_MAP = {
@@ -222,6 +232,58 @@ def _build_cancer_type_labels(selected_leaf_keys):
     return _unique_in_order(_pretty_label(k) for k in selected_leaf_keys)
 
 
+SEX_SPECIFIC_CANCER_SEX = {
+    "cervix uteri": "F",
+    "corpus uteri": "F",
+    "uterus, nos": "F",
+    "uteros, nos": "F",   # included defensively in case the source label has this spelling
+    "ovary": "F",
+    "vagina": "F",
+    "vulva": "F",
+    "other female genital organs": "F",
+    "prostate": "M",
+    "testis": "M",
+    "penis": "M",
+    "other male genital organs": "M",
+}
+
+
+def _get_selected_sex_specific_cancers(selected_leaf_keys):
+    if not selected_leaf_keys:
+        return []
+
+    _, leaf_meta = get_cancer_type_tree()
+    matched = []
+
+    for k in selected_leaf_keys:
+        meta = leaf_meta.get(k) or {}
+
+        candidates = [
+            (meta.get("Site_sub_sub") or "").strip(),
+            (meta.get("Site_sub") or "").strip(),
+            (meta.get("Sites") or "").strip(),
+        ]
+
+        for label in candidates:
+            norm = label.lower()
+            if norm in SEX_SPECIFIC_CANCER_SEX:
+                matched.append({
+                    "label": label,
+                    "sex": SEX_SPECIFIC_CANCER_SEX[norm],
+                })
+                break
+
+    deduped = []
+    seen = set()
+    for item in matched:
+        key = (item["label"].lower(), item["sex"])
+        if key not in seen:
+            deduped.append(item)
+            seen.add(key)
+
+    return deduped
+
+
 def _wizard_context(request, current_step: str) -> Dict[str, Any]:
     geo = _session_get(request, "geographic_level", "none")
     is_geo_strat = geo not in ("none", "patient")
@@ -229,6 +291,7 @@ def _wizard_context(request, current_step: str) -> Dict[str, Any]:
 
     filters_state = _session_get(request, "filters", {}) or {}
     selected_leaf_keys = filters_state.get("cancer_types") or []
+    selected_sex_specific_cancers = _get_selected_sex_specific_cancers(selected_leaf_keys)
 
     _, leaf_meta = get_cancer_type_tree()
     prostate_selected = any(
@@ -249,6 +312,8 @@ def _wizard_context(request, current_step: str) -> Dict[str, Any]:
         "is_patient_level": is_patient_level,
         "prostate_selected": prostate_selected,
         "gleason_selected": gleason_selected,
+        "selected_sex_specific_cancers": selected_sex_specific_cancers,
+        "has_sex_specific_cancers": bool(selected_sex_specific_cancers),
     }
 
 

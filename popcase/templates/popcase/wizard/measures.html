@@ -2,9 +2,35 @@
 {% block title %}Measures | PopCASE{% endblock %}
 
 {% block content %}
+  <style>
+    .measure-heading-inline {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+
+    .measure-heading-inline h6 {
+      margin-bottom: 0;
+    }
+
+    .measure-select-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-bottom: 0;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .measure-select-all .form-check-input {
+      margin-top: 0;
+    }
+  </style>
+
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h4 class="mb-0">Measures</h4>
-{#    <a class="btn btn-outline-secondary btn-sm" href="{% url 'popcase:reset' %}">Reset</a>#}
   </div>
 
   <ul class="nav nav-tabs mb-3">
@@ -34,18 +60,38 @@
     </div>
   {% endif %}
 
-
   <form method="post">
     {% csrf_token %}
 
+    {% if has_sex_specific_cancers %}
+      <div
+        id="sexSpecificRateWarning"
+        class="alert alert-warning d-none"
+        role="alert"
+      >
+        <div class="d-flex align-items-start">
+          <div class="me-2" aria-hidden="true" style="font-size: 1.25rem;">&#9888;</div>
+          <div>
+            <strong>Warning:</strong>
+            You have requested rate estimates for one or more sex-specific cancers.
+            Please note that the denominator used for rate calculations will contain patients in all sex categories unless you explicitly restrict the search to a single sex on the Filters tab.
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
     {% if not is_geo_strat and not is_patient_level %}
-      <!-- NO GEO STRATIFICATION: exactly 2 cards -->
       <div class="row g-3">
-        <!-- Disease-focused -->
         <div class="col-lg-6">
           <div class="card shadow-sm h-100">
-            <div class="card-body popcase-tree">
-              <h6 class="text-uppercase text-secondary">Disease-focused</h6>
+            <div class="card-body popcase-tree select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Disease-focused</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_disease_no_geo">
+                  <label class="form-check-label" for="select_all_disease_no_geo">Select all</label>
+                </div>
+              </div>
 
               <div class="form-check">
                 {{ form.disease_measures.0.tag }}
@@ -54,51 +100,62 @@
 
               <div class="form-check mt-2">
                 {{ form.disease_measures.1.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.1.id_for_label }}">% Advanced at diagnosis (Regional or metastatic spread)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.1.id_for_label }}">% Advanced at diagnosis</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
                   {{ form.disease_measures.2.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.2.id_for_label }}">% Metastatic at diagnosis</label>
+                  <label class="form-check-label" for="{{ form.disease_measures.2.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
 
               <div class="form-check mt-2">
                 {{ form.disease_measures.3.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.3.id_for_label }}">Median time to treatment initiation</label>
-              </div>
-
-              <div class="form-check mt-2">
-                {{ form.disease_measures.4.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.4.id_for_label }}">Age-adjusted incidence rate (per 100,000)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.3.id_for_label }}">% Metastatic at diagnosis</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
-                  {{ form.disease_measures.5.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.5.id_for_label }}">95% Confidence Interval (incidence)</label>
+                  {{ form.disease_measures.4.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.4.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
 
               <div class="form-check mt-2">
+                {{ form.disease_measures.5.tag }}
+                <label class="form-check-label" for="{{ form.disease_measures.5.id_for_label }}">Median time to treatment initiation</label>
+              </div>
+
+              <div class="form-check mt-2">
                 {{ form.disease_measures.6.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.6.id_for_label }}">Age-adjusted mortality rate (per 100,000)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.6.id_for_label }}">Age-adjusted incidence rate (per 100,000)</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
                   {{ form.disease_measures.7.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">95% Confidence Interval (mortality)</label>
+                  <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">95% Confidence Interval (incidence)</label>
+                </div>
+              </div>
+
+              <div class="form-check mt-2">
+                {{ form.disease_measures.8.tag }}
+                <label class="form-check-label" for="{{ form.disease_measures.8.id_for_label }}">Age-adjusted mortality rate (per 100,000)</label>
+              </div>
+              <div class="ms-4">
+                <div class="form-check">
+                  {{ form.disease_measures.9.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.9.id_for_label }}">95% Confidence Interval (mortality)</label>
                 </div>
               </div>
 
               {% if prostate_selected %}
                 <div class="form-check mt-2">
-                  {{ form.disease_measures.8.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.8.id_for_label }}">Gleason Score (Prostate cancer only)</label>
+                  {{ form.disease_measures.10.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.10.id_for_label }}">Gleason Score (Prostate cancer only)</label>
                 </div>
               {% else %}
                 <div class="form-check mt-2">
-                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_8" disabled {% if gleason_selected %}checked{% endif %}>
-                  <label class="form-check-label text-muted" for="id_disease_measures_8">
+                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_10" disabled {% if gleason_selected %}checked{% endif %}>
+                  <label class="form-check-label text-muted" for="id_disease_measures_10">
                     Gleason Score (Prostate cancer only)
                     <span class="small">(enable by selecting Prostate in Filters → Cancer Type(s))</span>
                   </label>
@@ -108,11 +165,16 @@
           </div>
         </div>
 
-        <!-- Access to care for cancer patients -->
         <div class="col-lg-6">
           <div class="card shadow-sm h-100">
-            <div class="card-body popcase-tree">
-              <h6 class="text-uppercase text-secondary">Access to Care for Cancer Patients</h6>
+            <div class="card-body popcase-tree select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Access to Care for Cancer Patients</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_access_patient">
+                  <label class="form-check-label" for="select_all_access_patient">Select all</label>
+                </div>
+              </div>
 
               <div class="mt-2 fw-semibold">Travel time-adjusted provider or facility density per 100,000 population (from centroid of patient's census block group)</div>
               <div class="ms-3">
@@ -133,13 +195,17 @@
       </div>
 
     {% elif is_geo_strat %}
-      <!-- GEO STRATIFICATION: multiple cards -->
       <div class="row g-3">
-        <!-- Disease-focused -->
         <div class="col-12">
           <div class="card shadow-sm">
-            <div class="card-body popcase-tree">
-              <h6 class="text-uppercase text-secondary">Disease-focused</h6>
+            <div class="card-body popcase-tree select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Disease-focused</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_disease_geo">
+                  <label class="form-check-label" for="select_all_disease_geo">Select all</label>
+                </div>
+              </div>
 
               <div class="form-check">
                 {{ form.disease_measures.0.tag }}
@@ -148,51 +214,62 @@
 
               <div class="form-check mt-2">
                 {{ form.disease_measures.1.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.1.id_for_label }}">% Advanced at diagnosis (Regional or metastatic spread)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.1.id_for_label }}">% Advanced at diagnosis</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
                   {{ form.disease_measures.2.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.2.id_for_label }}">% Metastatic at diagnosis</label>
+                  <label class="form-check-label" for="{{ form.disease_measures.2.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
 
               <div class="form-check mt-2">
                 {{ form.disease_measures.3.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.3.id_for_label }}">Median time to treatment initiation</label>
-              </div>
-
-              <div class="form-check mt-2">
-                {{ form.disease_measures.4.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.4.id_for_label }}">Age-adjusted incidence rate (per 100,000)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.3.id_for_label }}">% Metastatic at diagnosis</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
-                  {{ form.disease_measures.5.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.5.id_for_label }}">95% Confidence Interval (incidence)</label>
+                  {{ form.disease_measures.4.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.4.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
 
               <div class="form-check mt-2">
+                {{ form.disease_measures.5.tag }}
+                <label class="form-check-label" for="{{ form.disease_measures.5.id_for_label }}">Median time to treatment initiation</label>
+              </div>
+
+              <div class="form-check mt-2">
                 {{ form.disease_measures.6.tag }}
-                <label class="form-check-label" for="{{ form.disease_measures.6.id_for_label }}">Age-adjusted mortality rate (per 100,000)</label>
+                <label class="form-check-label" for="{{ form.disease_measures.6.id_for_label }}">Age-adjusted incidence rate (per 100,000)</label>
               </div>
               <div class="ms-4">
                 <div class="form-check">
                   {{ form.disease_measures.7.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">95% Confidence Interval (mortality)</label>
+                  <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">95% Confidence Interval (incidence)</label>
+                </div>
+              </div>
+
+              <div class="form-check mt-2">
+                {{ form.disease_measures.8.tag }}
+                <label class="form-check-label" for="{{ form.disease_measures.8.id_for_label }}">Age-adjusted mortality rate (per 100,000)</label>
+              </div>
+              <div class="ms-4">
+                <div class="form-check">
+                  {{ form.disease_measures.9.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.9.id_for_label }}">95% Confidence Interval (mortality)</label>
                 </div>
               </div>
 
               {% if prostate_selected %}
                 <div class="form-check mt-2">
-                  {{ form.disease_measures.8.tag }}
-                  <label class="form-check-label" for="{{ form.disease_measures.8.id_for_label }}">Gleason Score (Prostate cancer only)</label>
+                  {{ form.disease_measures.10.tag }}
+                  <label class="form-check-label" for="{{ form.disease_measures.10.id_for_label }}">Gleason Score (Prostate cancer only)</label>
                 </div>
               {% else %}
                 <div class="form-check mt-2">
-                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_8" disabled {% if gleason_selected %}checked{% endif %}>
-                  <label class="form-check-label text-muted" for="id_disease_measures_8">
+                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_10" disabled {% if gleason_selected %}checked{% endif %}>
+                  <label class="form-check-label text-muted" for="id_disease_measures_10">
                     Gleason Score (Prostate cancer only)
                     <span class="small">(enable by selecting Prostate in Filters → Cancer Type(s))</span>
                   </label>
@@ -202,11 +279,16 @@
           </div>
         </div>
 
-        <!-- Cancer Prevention -->
         <div class="col-12">
           <div class="card shadow-sm">
-            <div class="card-body popcase-tree">
-              <h6 class="text-uppercase text-secondary">Cancer Prevention</h6>
+            <div class="card-body popcase-tree select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Cancer Prevention</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_cancer_prevention">
+                  <label class="form-check-label" for="select_all_cancer_prevention">Select all</label>
+                </div>
+              </div>
 
               <div class="fw-semibold">Cancer Risk Factors (Community-level, Adults only)</div>
               <div class="ms-3">
@@ -221,17 +303,23 @@
               <div class="ms-3">
                 <div class="form-check">{{ form.cancer_prevention.5.tag }} <label class="form-check-label" for="{{ form.cancer_prevention.5.id_for_label }}">Colorectal cancer screening (age 45-75)</label></div>
                 <div class="form-check">{{ form.cancer_prevention.6.tag }} <label class="form-check-label" for="{{ form.cancer_prevention.6.id_for_label }}">Breast cancer screening (age 50-74)</label></div>
-                <div class="form-check">{{ form.cancer_prevention.7.tag }} <label class="form-check-label" for="{{ form.cancer_prevention.7.id_for_label }}">Cervical cancer screening</label></div>
+                <div class="form-check">{{ form.cancer_prevention.7.tag }} <label class="form-check-label" for="{{ form.cancer_prevention.7.id_for_label }}">Cervical cancer screening (age 21-65)</label></div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Non-cancer community Health Status -->
         <div class="col-12">
           <div class="card shadow-sm">
-            <div class="card-body">
-              <h6 class="text-uppercase text-secondary">Non-cancer community Health Status Measures (Adults only)</h6>
+            <div class="card-body select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Non-cancer community Health Status Measures (Adults only)</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_noncancer_health">
+                  <label class="form-check-label" for="select_all_noncancer_health">Select all</label>
+                </div>
+              </div>
+
               {% for cb in form.noncancer_health_status %}
                 <div class="form-check">{{ cb.tag }} <label class="form-check-label" for="{{ cb.id_for_label }}">{{ cb.choice_label }}</label></div>
               {% endfor %}
@@ -239,12 +327,17 @@
           </div>
         </div>
 
-        <!-- Access to care for communities: depends on geographic level -->
         {% if geographic_level == "tract" %}
           <div class="col-12">
             <div class="card shadow-sm">
-              <div class="card-body popcase-tree">
-                <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY CENSUS TRACT]</h6>
+              <div class="card-body popcase-tree select-all-scope">
+                <div class="measure-heading-inline">
+                  <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY CENSUS TRACT]</h6>
+                  <div class="form-check measure-select-all">
+                    <input class="form-check-input select-all-master" type="checkbox" id="select_all_access_tract">
+                    <label class="form-check-label" for="select_all_access_tract">Select all</label>
+                  </div>
+                </div>
 
                 <div class="fw-semibold">Travel time-adjusted providers or facilities per 100,000 population from census tract centroid</div>
                 <div class="ms-3">
@@ -275,8 +368,14 @@
         {% elif geographic_level == "zcta" or geographic_level == "place" %}
           <div class="col-12">
             <div class="card shadow-sm">
-              <div class="card-body popcase-tree">
-                <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY ZCTA OR PLACE/MUNICIPALITY]</h6>
+              <div class="card-body popcase-tree select-all-scope">
+                <div class="measure-heading-inline">
+                  <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY ZCTA OR PLACE/MUNICIPALITY]</h6>
+                  <div class="form-check measure-select-all">
+                    <input class="form-check-input select-all-master" type="checkbox" id="select_all_access_zcta_place">
+                    <label class="form-check-label" for="select_all_access_zcta_place">Select all</label>
+                  </div>
+                </div>
 
                 <div class="fw-semibold">Survey-based community access measures</div>
                 <div class="ms-3">
@@ -291,8 +390,14 @@
         {% elif geographic_level == "county" %}
           <div class="col-12">
             <div class="card shadow-sm">
-              <div class="card-body popcase-tree">
-                <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY COUNTY]</h6>
+              <div class="card-body popcase-tree select-all-scope">
+                <div class="measure-heading-inline">
+                  <h6 class="text-uppercase text-secondary">Access to care for communities [IF STRATIFYING BY COUNTY]</h6>
+                  <div class="form-check measure-select-all">
+                    <input class="form-check-input select-all-master" type="checkbox" id="select_all_access_county">
+                    <label class="form-check-label" for="select_all_access_county">Select all</label>
+                  </div>
+                </div>
 
                 <div class="fw-semibold">Providers or facilities per 100,000 in county</div>
                 <div class="ms-3">
@@ -315,11 +420,16 @@
           </div>
         {% endif %}
 
-        <!-- Community Characteristics -->
         <div class="col-12">
           <div class="card shadow-sm">
-            <div class="card-body popcase-tree">
-              <h6 class="text-uppercase text-secondary">Community Characteristics</h6>
+            <div class="card-body popcase-tree select-all-scope">
+              <div class="measure-heading-inline">
+                <h6 class="text-uppercase text-secondary">Community Characteristics</h6>
+                <div class="form-check measure-select-all">
+                  <input class="form-check-input select-all-master" type="checkbox" id="select_all_community_characteristics">
+                  <label class="form-check-label" for="select_all_community_characteristics">Select all</label>
+                </div>
+              </div>
 
               <div class="fw-semibold">Demographic (Basic)</div>
               <div class="ms-3">
@@ -380,7 +490,6 @@
       </div>
 
     {% else %}
-      <!-- Patient-level mode placeholder -->
       <div class="card shadow-sm">
         <div class="card-body">
           <p class="text-secondary mb-0">Patient-level measures selection is under development.</p>
@@ -394,108 +503,80 @@
     </div>
   </form>
 
-{#<hr class="my-4">#}
-{##}
-{#<h4 class="mb-3">#}
-{#  Crude Incidence Rates by#}
-{#  {% if geographic_level == "county" %}#}
-{#    County#}
-{#  {% elif geographic_level == "tract" %}#}
-{#    Census Tract#}
-{#  {% elif geographic_level == "zcta" %}#}
-{#    ZIP Code Tabulation Area#}
-{#  {% endif %}#}
-{#  ({{ year }})#}
-{#</h4>#}
-{##}
-{#<div class="table-responsive">#}
-{#  <table class="table table-sm table-striped align-middle">#}
-{#    <thead class="table-light">#}
-{#      <tr>#}
-{#        <th>#}
-{#          {% if geographic_level == "county" %}#}
-{#            County#}
-{#          {% elif geographic_level == "tract" %}#}
-{#            Census Tract GEOID#}
-{#          {% elif geographic_level == "zcta" %}#}
-{#            ZIP Code (ZCTA)#}
-{#          {% endif %}#}
-{#        </th>#}
-{#        <th class="text-end">Cases</th>#}
-{#        <th class="text-end">Population</th>#}
-{#        <th class="text-end">Incidence / 100,000</th>#}
-{#      </tr>#}
-{#    </thead>#}
-{#    <tbody>#}
-{#      {% for row in incidence_results %}#}
-{#        <tr>#}
-{#            <td>#}
-{#              {% if geographic_level == "county" %}#}
-{#                {{ row.county_name }}#}
-{#              {% elif geographic_level == "tract" %}#}
-{#                {{ row.tract_geoid }}#}
-{#              {% elif geographic_level == "zcta" %}#}
-{#                {{ row.zcta }}#}
-{#              {% endif %}#}
-{#            </td>#}
-{#            <td class="text-end">{{ row.case_count }}</td>#}
-{#            <td class="text-end">{{ row.population }}</td>#}
-{#            <td class="text-end">{{ row.incidence_per_100k }}</td>#}
-{#        </tr>#}
-{#      {% empty %}#}
-{#        <tr>#}
-{#          <td colspan="4" class="text-muted">No data available</td>#}
-{#        </tr>#}
-{#      {% endfor %}#}
-{#    </tbody>#}
-{#  </table>#}
-{#</div>#}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const warningBox = document.getElementById("sexSpecificRateWarning");
+      if (warningBox) {
+        const rateCheckboxes = [
+          document.querySelector('input[name="disease_measures"][value="inc_rate"]'),
+          document.querySelector('input[name="disease_measures"][value="inc_ci"]'),
+          document.querySelector('input[name="disease_measures"][value="mort_rate"]'),
+          document.querySelector('input[name="disease_measures"][value="mort_ci"]')
+        ].filter(Boolean);
 
-{#<h4 class="mt-5 mb-3">#}
-{#  % Advanced at Diagnosis#}
-{#  {% if geographic_level == "county" %}#}
-{#    by County#}
-{#  {% elif geographic_level == "tract" %}#}
-{#    by Census Tract#}
-{#  {% elif geographic_level == "zcta" %}#}
-{#    by ZIP Code#}
-{#  {% endif %}#}
-{#  ({{ year }})#}
-{#</h4>#}
-{##}
-{#<table class="table table-sm table-striped">#}
-{#  <thead class="table-light">#}
-{#    <tr>#}
-{#      <th>#}
-{#        {% if geographic_level == "county" %}#}
-{#          County GEOID#}
-{#        {% elif geographic_level == "tract" %}#}
-{#          Census Tract GEOID#}
-{#        {% elif geographic_level == "zcta" %}#}
-{#          ZIP Code#}
-{#        {% endif %}#}
-{#      </th>#}
-{#      <th class="text-end">Total Cases</th>#}
-{#      <th class="text-end">Advanced Cases</th>#}
-{#      <th class="text-end">% Advanced</th>#}
-{#    </tr>#}
-{#  </thead>#}
-{#  <tbody>#}
-{#    {% for row in advanced_results %}#}
-{#      <tr>#}
-{#        <td>{{ row.geoid }}</td>#}
-{#        <td class="text-end">{{ row.total_cases }}</td>#}
-{#        <td class="text-end">{{ row.advanced_cases }}</td>#}
-{#        <td class="text-end">{{ row.percent_advanced }}</td>#}
-{#      </tr>#}
-{#    {% empty %}#}
-{#      <tr>#}
-{#        <td colspan="4" class="text-center text-muted">#}
-{#          No data available#}
-{#        </td>#}
-{#      </tr>#}
-{#    {% endfor %}#}
-{#  </tbody>#}
-{#</table>#}
+        function toggleSexSpecificWarning() {
+          const anyRateSelected = rateCheckboxes.some(cb => cb.checked);
+          warningBox.classList.toggle("d-none", !anyRateSelected);
+        }
+
+        rateCheckboxes.forEach(cb => {
+          cb.addEventListener("change", toggleSexSpecificWarning);
+        });
+
+        toggleSexSpecificWarning();
+      }
+
+      function getChildCheckboxes(scope) {
+        return Array.from(scope.querySelectorAll('input[type="checkbox"]')).filter(function (cb) {
+          return !cb.classList.contains('select-all-master');
+        });
+      }
+
+      function syncMaster(scope) {
+        const master = scope.querySelector('.select-all-master');
+        if (!master) return;
+
+        const children = getChildCheckboxes(scope).filter(function (cb) {
+          return !cb.disabled;
+        });
+
+        if (children.length === 0) {
+          master.checked = false;
+          master.indeterminate = false;
+          return;
+        }
+
+        const checkedCount = children.filter(function (cb) {
+          return cb.checked;
+        }).length;
+
+        master.checked = checkedCount === children.length;
+        master.indeterminate = checkedCount > 0 && checkedCount < children.length;
+      }
+
+      document.querySelectorAll('.select-all-scope').forEach(function (scope) {
+        const master = scope.querySelector('.select-all-master');
+        if (!master) return;
+
+        const children = getChildCheckboxes(scope);
+
+        master.addEventListener('change', function () {
+          children.forEach(function (cb) {
+            if (!cb.disabled) {
+              cb.checked = master.checked;
+            }
+          });
+        });
+
+        children.forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            syncMaster(scope);
+          });
+        });
+
+        syncMaster(scope);
+      });
+    });
+  </script>
 
 {% endblock %}

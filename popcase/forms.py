@@ -207,8 +207,10 @@ class MeasuresForm(forms.Form):
 
     DISEASE_LEAVES = [
         ("case_count", "Case Count"),
-        ("pct_advanced", "% Advanced at diagnosis (Regional or metastatic spread)"),
+        ("pct_advanced", "% Advanced at diagnosis"),
+        ("pct_advanced_ci", "95% Confidence Interval (% Advanced)"),
         ("pct_metastatic", "% Metastatic at diagnosis"),
+        ("pct_metastatic_ci", "95% Confidence Interval (% Metastatic)"),
         ("median_tti", "Median time to treatment initiation"),
         ("inc_rate", "Age-adjusted incidence rate (per 100,000)"),
         ("inc_ci", "95% Confidence Interval (incidence)"),

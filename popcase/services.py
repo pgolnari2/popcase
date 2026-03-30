@@ -61,6 +61,32 @@ SEX_LABEL_TO_CODE = {
     "f": "2",
 }
 
+SEX_FILTER_TO_B01001_TOTAL_FIELD = {
+    "male": "total_male",
+    "female": "total_female",
+}
+
+COLLAPSED_US2000_STD_WEIGHTS = {
+    "00_04": 13818 + 55317,
+    "05_09": 72533,
+    "10_14": 73032,
+    "15_19": 72169,
+    "20_24": 66478,
+    "25_29": 64529,
+    "30_34": 71052,
+    "35_39": 80762,
+    "40_44": 88124,
+    "45_49": 86379,
+    "50_54": 72179,
+    "55_59": 62716,
+    "60_64": 48454,
+    "65_69": 38793,
+    "70_74": 28728,
+    "75_79": 18565,
+    "80_84": 11631,
+    "85+": 15508,
+}
+
 # ---------------------------------------------------------
 # US 2000 STANDARD POPULATION WEIGHTS (19 groups)
 # 00–17 as-is, 18+19 combined into 85+
@@ -102,9 +128,285 @@ NEO_15_COUNTY_GEOIDS = {
 # CANCER TYPE TREE (3-tier UI)
 # ---------------------------------------------------------
 
+
+def _is_neo15_scope(filters):
+    geo_scope = (filters.get("geography") or "all_ohio").strip().lower()
+    return geo_scope in ("neo15", "neo_15", "catchment15", "catchment_15")
+
+
+def _geoid_in_scope(geographic_level: str, geoid: str, filters: dict) -> bool:
+    if not _is_neo15_scope(filters):
+        return True
+
+    if not geoid:
+        return False
+
+    g = str(geoid).strip()
+
+    if geographic_level == "county":
+        return g in NEO_15_COUNTY_GEOIDS
+
+    if geographic_level == "tract":
+        return len(g) >= 5 and g[:5] in NEO_15_COUNTY_GEOIDS
+
+    # No county crosswalk implemented here for ZCTA/place yet,
+    # so leave them unchanged for now.
+    return True
+
+
+def _filter_lookup_to_scope(lookup: dict, geographic_level: str, filters: dict) -> dict:
+    if not lookup:
+        return {}
+    return {
+        k: v
+        for k, v in lookup.items()
+        if _geoid_in_scope(geographic_level, k, filters)
+    }
+
+
 def _safe_strip(x):
     return (x or "").strip()
 
+
+def _normalize_requested_sex(filters: dict):
+    sex = (filters.get("sex") or "").strip().lower()
+    return sex if sex in ("male", "female") else None
+
+
+def _normalize_geoid_for_level_from_geo_id(geo_id, geographic_level):
+    if not geo_id:
+        return None
+    s = str(geo_id).strip()
+    if geographic_level == "county":
+        return s[-5:]
+    if geographic_level == "tract":
+        return s[-11:]
+    if geographic_level == "zcta":
+        return s[-5:]
+    if geographic_level == "state":
+        return s[-2:]
+    return s
+
+
+def _normalize_geoid_for_level_value(geoid, geographic_level):
+    if geoid is None:
+        return None
+    s = str(geoid).strip()
+    if geographic_level == "zcta":
+        return s[-5:]
+    return s
+
+
+def _sex_specific_cancer_sex_from_filters(filters: dict):
+    selected = filters.get("cancer_types") or []
+    if not selected:
+        return None
+
+    _, leaf_meta = load_cancer_logic()
+
+    sex_specific_map = {
+        "cervix uteri": "female",
+        "corpus uteri": "female",
+        "uteros, nos": "female",
+        "uterus, nos": "female",
+        "ovary": "female",
+        "vagina": "female",
+        "vulva": "female",
+        "other female genital organs": "female",
+        "prostate": "male",
+        "testis": "male",
+        "penis": "male",
+        "other male genital organs": "male",
+    }
+
+    found = set()
+
+    for leaf_key in selected:
+        meta = leaf_meta.get(leaf_key) or {}
+        labels = [
+            (meta.get("Site_sub_sub") or "").strip().lower(),
+            (meta.get("Site_sub") or "").strip().lower(),
+            (meta.get("Sites") or "").strip().lower(),
+        ]
+        for label in labels:
+            if label in sex_specific_map:
+                found.add(sex_specific_map[label])
+                break
+
+    if len(found) == 1:
+        return next(iter(found))
+    return None
+
+
+def _should_use_sex_specific_denominator(filters: dict):
+    requested_sex = _normalize_requested_sex(filters)
+    cancer_required_sex = _sex_specific_cancer_sex_from_filters(filters)
+
+    if requested_sex and cancer_required_sex and requested_sex == cancer_required_sex:
+        return requested_sex
+    return None
+
+
+def _population_total_field_for_incidence(filters: dict):
+    sex_specific = _should_use_sex_specific_denominator(filters)
+    if sex_specific in SEX_FILTER_TO_B01001_TOTAL_FIELD:
+        return SEX_FILTER_TO_B01001_TOTAL_FIELD[sex_specific]
+    return "total_population"
+
+
+def _collapsed_age_bin(age):
+    if age is None:
+        return None
+    age = int(age)
+
+    if 0 <= age <= 4:
+        return "00_04"
+    if 5 <= age <= 9:
+        return "05_09"
+    if 10 <= age <= 14:
+        return "10_14"
+    if 15 <= age <= 19:
+        return "15_19"
+    if 20 <= age <= 24:
+        return "20_24"
+    if 25 <= age <= 29:
+        return "25_29"
+    if 30 <= age <= 34:
+        return "30_34"
+    if 35 <= age <= 39:
+        return "35_39"
+    if 40 <= age <= 44:
+        return "40_44"
+    if 45 <= age <= 49:
+        return "45_49"
+    if 50 <= age <= 54:
+        return "50_54"
+    if 55 <= age <= 59:
+        return "55_59"
+    if 60 <= age <= 64:
+        return "60_64"
+    if 65 <= age <= 69:
+        return "65_69"
+    if 70 <= age <= 74:
+        return "70_74"
+    if 75 <= age <= 79:
+        return "75_79"
+    if 80 <= age <= 84:
+        return "80_84"
+    if age >= 85:
+        return "85+"
+
+    return None
+
+
+def _sum_row_fields(row, field_names):
+    total = 0.0
+    for f in field_names:
+        total += float(row.get(f) or 0)
+    return total
+
+
+def _get_sex_specific_collapsed_population_lookup(year, geographic_level, sex):
+    prefix = "m_" if sex == "male" else "f_"
+
+    age_field_map = {
+        "00_04": [f"{prefix}under5"],
+        "05_09": [f"{prefix}5_9"],
+        "10_14": [f"{prefix}10_14"],
+        "15_19": [f"{prefix}15_17", f"{prefix}18_19"],
+        "20_24": [f"{prefix}20", f"{prefix}21", f"{prefix}22_24"],
+        "25_29": [f"{prefix}25_29"],
+        "30_34": [f"{prefix}30_34"],
+        "35_39": [f"{prefix}35_39"],
+        "40_44": [f"{prefix}40_44"],
+        "45_49": [f"{prefix}45_49"],
+        "50_54": [f"{prefix}50_54"],
+        "55_59": [f"{prefix}55_59"],
+        "60_64": [f"{prefix}60_61", f"{prefix}62_64"],
+        "65_69": [f"{prefix}65_66", f"{prefix}67_69"],
+        "70_74": [f"{prefix}70_74"],
+        "75_79": [f"{prefix}75_79"],
+        "80_84": [f"{prefix}80_84"],
+        "85+": [f"{prefix}85_plus"],
+    }
+
+    needed_fields = ["geo_id"]
+    for fields in age_field_map.values():
+        needed_fields.extend(fields)
+
+    lookup = {}
+    for row in (
+        Acs5YrB01001.objects
+        .filter(year=str(year), geographic_level=geographic_level)
+        .values(*needed_fields)
+        .iterator(chunk_size=5000)
+    ):
+        geoid = _normalize_geoid_for_level_from_geo_id(row["geo_id"], geographic_level)
+        if not geoid:
+            continue
+
+        lookup[geoid] = {
+            age_bin: _sum_row_fields(row, fields)
+            for age_bin, fields in age_field_map.items()
+        }
+
+    return lookup
+
+
+def _compute_sex_specific_age_adjusted_ci_by_geo(year, geographic_level, filtered_pat_ids, sex):
+    if not filtered_pat_ids:
+        return {}
+
+    with connection.cursor() as cur:
+        cur.execute(f"""
+            SELECT
+                l.geoid,
+                d."Age at Diagnosis"::int AS age_dx
+            FROM naaccr_data d
+            JOIN naaccr_patient_census_linking l
+                ON d."Patient ID Number" = l."Patient ID Number"
+            WHERE l.year = %s
+              AND l.geographic_level = %s
+              AND l."Patient ID Number" IN ({",".join(["%s"] * len(filtered_pat_ids))})
+        """, [str(year), geographic_level] + filtered_pat_ids)
+        rows = cur.fetchall()
+
+    case_lookup = defaultdict(lambda: defaultdict(int))
+    for geoid_raw, age_dx in rows:
+        geoid = _normalize_geoid_for_level_value(geoid_raw, geographic_level)
+        age_bin = _collapsed_age_bin(age_dx)
+        if not geoid or not age_bin:
+            continue
+        case_lookup[geoid][age_bin] += 1
+
+    pop_lookup = _get_sex_specific_collapsed_population_lookup(year, geographic_level, sex)
+
+    out = {}
+    scale = 100000.0 / 1_000_000.0
+
+    for geoid, age_cases in case_lookup.items():
+        total = 0.0
+        var_sum = 0.0
+
+        for age_bin, weight in COLLAPSED_US2000_STD_WEIGHTS.items():
+            pop = pop_lookup.get(geoid, {}).get(age_bin)
+            d = age_cases.get(age_bin, 0)
+
+            if pop and pop > 0:
+                total += weight * (d / pop)
+                var_sum += (weight ** 2) * (d / (pop ** 2))
+
+        rate = total * scale
+        se = math.sqrt(var_sum) * scale if var_sum > 0 else 0.0
+
+        if total > 0:
+            lo = max(0.0, rate - 1.96 * se)
+            hi = rate + 1.96 * se
+            out[geoid] = (round(rate, 1), round(lo, 1), round(hi, 1))
+        else:
+            out[geoid] = (None, None, None)
+
+    return out
 
 # =========================================================
 # 1️⃣ Load Structured Cancer Logic CSV
@@ -461,7 +763,9 @@ def apply_naaccr_filters(qs, filters: dict):
 
 def get_incidence_by_geography(year, geographic_level, filters):
     year = str(year)
-    filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters or {})
+    filters = filters or {}
+
+    filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters)
     filtered_pat_ids = list(filtered_qs.values_list("mid", flat=True))
 
     if not filtered_pat_ids:
@@ -479,36 +783,45 @@ def get_incidence_by_geography(year, geographic_level, filters):
         .order_by()
     )
 
-    case_lookup = {r["geoid"]: r["case_count"] for r in case_counts}
+    case_lookup = {
+        _normalize_geoid_for_level_value(r["geoid"], geographic_level): r["case_count"]
+        for r in case_counts
+    }
     if not case_lookup:
         return []
 
-    aa_stats = {}
-    if geographic_level == "tract":
-        aa_stats = _compute_age_adjusted_ci_by_tract(year, filtered_pat_ids)
-    elif geographic_level == "county":
-        aa_stats = _compute_age_adjusted_ci_by_county(year, filtered_pat_ids)
-    elif geographic_level == "zcta":
-        aa_stats = _compute_age_adjusted_ci_by_zcta(year, filtered_pat_ids)
+    sex_specific_denominator = _should_use_sex_specific_denominator(filters)
+
+    if sex_specific_denominator:
+        aa_stats = _compute_sex_specific_age_adjusted_ci_by_geo(
+            year=year,
+            geographic_level=geographic_level,
+            filtered_pat_ids=filtered_pat_ids,
+            sex=sex_specific_denominator,
+        )
+    else:
+        aa_stats = {}
+        if geographic_level == "tract":
+            aa_stats = _compute_age_adjusted_ci_by_tract(year, filtered_pat_ids)
+        elif geographic_level == "county":
+            aa_stats = _compute_age_adjusted_ci_by_county(year, filtered_pat_ids)
+        elif geographic_level == "zcta":
+            aa_stats = _compute_age_adjusted_ci_by_zcta(year, filtered_pat_ids)
+
+    pop_field = _population_total_field_for_incidence(filters)
 
     pop_lookup = {}
     for row in (
         Acs5YrB01001.objects
         .filter(year=year, geographic_level=geographic_level)
-        .values("geo_id", "total_population")
+        .values("geo_id", pop_field)
     ):
-        pop = row["total_population"]
+        pop = row.get(pop_field)
         if not pop:
             continue
 
-        geo_id = row["geo_id"]
-        if geographic_level == "county":
-            geoid = geo_id[-5:]
-        elif geographic_level == "tract":
-            geoid = geo_id[-11:]
-        elif geographic_level == "zcta":
-            geoid = geo_id[-5:]
-        else:
+        geoid = _normalize_geoid_for_level_from_geo_id(row["geo_id"], geographic_level)
+        if not geoid:
             continue
 
         pop_lookup[geoid] = pop
@@ -549,8 +862,9 @@ def get_incidence_by_geography(year, geographic_level, filters):
 
 def get_total_incidence(year: str, filters: dict):
     year = str(year)
+    filters = filters or {}
 
-    filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters or {})
+    filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters)
     filtered_pat_ids = list(filtered_qs.values_list("mid", flat=True))
 
     if not filtered_pat_ids:
@@ -564,10 +878,12 @@ def get_total_incidence(year: str, filters: dict):
         .count()
     )
 
+    pop_field = _population_total_field_for_incidence(filters)
+
     population = (
         Acs5YrB01001.objects
         .filter(year=year, geographic_level="state")
-        .values_list("total_population", flat=True)
+        .values_list(pop_field, flat=True)
         .first()
     )
 
@@ -602,6 +918,7 @@ def build_mvp_tract_dataset(
     filters = dict(filters)
     filters["dx_start"] = str(dx_start)
     filters["dx_end"] = str(dx_end)
+    neo15_scope = _is_neo15_scope(filters)
 
     filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters)
     stage_by_mid = dict(filtered_qs.values_list("mid", "stg_grp"))
@@ -1199,6 +1516,9 @@ def build_mvp_geo_dataset(
             continue
         geoid = _norm_geoid(geoid)
 
+        if not _geoid_in_scope(geographic_level, geoid, filters):
+            continue
+
         stg = stage_by_mid.get(pat_id)
         if stg is None:
             continue
@@ -1238,16 +1558,28 @@ def build_mvp_geo_dataset(
         )
         for r in inc_rows:
             incidence_lookup[r["geoid"]] = r
+    incidence_lookup = _filter_lookup_to_scope(incidence_lookup, geographic_level, filters)
 
     tract_support = {}
     if geographic_level == "tract" and support_measures:
         tract_support = _get_tract_support_lookups(support_measures)
+
+    if geographic_level == "tract" and tract_support:
+        tract_support = {
+            name: _filter_lookup_to_scope(lookup, "tract", filters)
+            for name, lookup in tract_support.items()
+        }
 
     all_geoids = set(denom_by_geo.keys()) | set(incidence_lookup.keys())
 
     if geographic_level == "tract" and tract_support:
         for lookup in tract_support.values():
             all_geoids |= set(lookup.keys())
+
+    all_geoids = {
+        g for g in all_geoids
+        if _geoid_in_scope(geographic_level, g, filters)
+    }
 
     rows = []
 
@@ -1262,22 +1594,30 @@ def build_mvp_geo_dataset(
         if "case_count" in disease_measures:
             out["case_count"] = int(denom_by_geo.get(geoid, 0))
 
-        if "pct_advanced" in disease_measures:
+        if ("pct_advanced" in disease_measures) or ("pct_advanced_ci" in disease_measures):
             n = int(denom_by_geo.get(geoid, 0))
             a = int(adv_by_geo.get(geoid, 0))
             out["n_total_staged_unstaged"] = n
             p, lo, hi = _prop_ci(a, n)
-            out["pct_advanced"] = round(p * 100, 2) if p is not None else None
-            out["adv_ci_lower"] = round(lo * 100, 2) if lo is not None else None
-            out["adv_ci_upper"] = round(hi * 100, 2) if hi is not None else None
 
-        if "pct_metastatic" in disease_measures:
+            if "pct_advanced" in disease_measures:
+                out["pct_advanced"] = round(p * 100, 2) if p is not None else None
+
+            if "pct_advanced_ci" in disease_measures:
+                out["adv_ci_lower"] = round(lo * 100, 2) if lo is not None else None
+                out["adv_ci_upper"] = round(hi * 100, 2) if hi is not None else None
+
+        if ("pct_metastatic" in disease_measures) or ("pct_metastatic_ci" in disease_measures):
             n = int(denom_by_geo.get(geoid, 0))
             m = int(meta_by_geo.get(geoid, 0))
             p, lo, hi = _prop_ci(m, n)
-            out["pct_metastatic"] = round(p * 100, 2) if p is not None else None
-            out["meta_ci_lower"] = round(lo * 100, 2) if lo is not None else None
-            out["meta_ci_upper"] = round(hi * 100, 2) if hi is not None else None
+
+            if "pct_metastatic" in disease_measures:
+                out["pct_metastatic"] = round(p * 100, 2) if p is not None else None
+
+            if "pct_metastatic_ci" in disease_measures:
+                out["meta_ci_lower"] = round(lo * 100, 2) if lo is not None else None
+                out["meta_ci_upper"] = round(hi * 100, 2) if hi is not None else None
 
         if ("inc_rate" in disease_measures) or ("inc_ci" in disease_measures):
             ir = incidence_lookup.get(geoid)
