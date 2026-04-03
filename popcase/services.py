@@ -2,6 +2,7 @@ import re
 import csv
 import math
 import ast
+import json
 from math import sqrt
 from functools import lru_cache
 from pathlib import Path
@@ -411,7 +412,7 @@ def _compute_sex_specific_age_adjusted_ci_by_geo(year, geographic_level, filtere
 # =========================================================
 # 1️⃣ Load Structured Cancer Logic CSV
 # =========================================================
-
+@lru_cache(maxsize=1)
 def load_cancer_logic():
     """
     Loads structured cancer logic from CSV.
@@ -761,7 +762,7 @@ def apply_naaccr_filters(qs, filters: dict):
 # INCIDENCE
 # ---------------------------------------------------------
 
-def get_incidence_by_geography(year, geographic_level, filters):
+def _get_incidence_by_geography_uncached(year, geographic_level, filters):
     year = str(year)
     filters = filters or {}
 
@@ -860,7 +861,24 @@ def get_incidence_by_geography(year, geographic_level, filters):
     return results
 
 
-def get_total_incidence(year: str, filters: dict):
+lru_cache(maxsize=128)
+def _get_incidence_by_geography_cached(year, geographic_level, filters_json):
+    return _get_incidence_by_geography_uncached(
+        year=year,
+        geographic_level=geographic_level,
+        filters=_deserialize_cache_payload(filters_json),
+    )
+
+
+def get_incidence_by_geography(year, geographic_level, filters):
+    return _get_incidence_by_geography_cached(
+        str(year),
+        geographic_level,
+        _serialize_cache_payload(filters or {}),
+    )
+
+
+def _get_total_incidence_uncached(year: str, filters: dict):
     year = str(year)
     filters = filters or {}
 
@@ -897,6 +915,15 @@ def get_total_incidence(year: str, filters: dict):
         "population": int(population),
         "incidence_per_100k": round((total_cases / population) * 100000, 1),
     }
+
+@lru_cache(maxsize=64)
+def _get_total_incidence_cached(year: str, filters_json: str):
+    return _get_total_incidence_uncached(year=year, filters=_deserialize_cache_payload(filters_json))
+
+
+def get_total_incidence(year: str, filters: dict):
+    return _get_total_incidence_cached(str(year), _serialize_cache_payload(filters or {}))
+
 
 
 def build_mvp_tract_dataset(
@@ -1232,6 +1259,7 @@ def _find_total_column(table_name):
     return None
 
 
+@lru_cache(maxsize=32)
 def _fetch_acs_total_lookup(table_name):
     spec = RACE_TABLE_SPECS.get(table_name)
     if not spec:
@@ -1267,6 +1295,7 @@ def _fetch_acs_total_lookup(table_name):
     return lookup
 
 
+@lru_cache(maxsize=1)
 def _get_tract_race_ethnicity_lookup():
     total_pop_lookup = {
         _tract_from_geo_id(row["geo_id"]): float(row["total_population"] or 0)
@@ -1329,11 +1358,12 @@ def _get_tract_race_ethnicity_lookup():
     return lookup
 
 
-def _get_tract_support_lookups(requested_support_measures=None):
+@lru_cache(maxsize=32)
+def _get_tract_support_lookups_cached(requested_tuple):
     """
     Returns tract-level lookup dicts for selected non-disease MVP fields.
     """
-    requested = set(_normalize_support_measure_tokens(requested_support_measures or []))
+    requested = set(requested_tuple or ())
     lookups = {}
 
     if requested & {"pop_total", "sex_distribution", "median_age"}:
@@ -1453,7 +1483,12 @@ def _get_tract_support_lookups(requested_support_measures=None):
     return lookups
 
 
-def build_mvp_geo_dataset(
+def _get_tract_support_lookups(requested_support_measures=None):
+    normalized = tuple(sorted(_normalize_support_measure_tokens(requested_support_measures or [])))
+    return _get_tract_support_lookups_cached(normalized)
+
+
+def _build_mvp_geo_dataset_uncached(
     geographic_level: str,
     year_range=("2011", "2022"),
     filters=None,
@@ -1698,6 +1733,63 @@ def build_mvp_geo_dataset(
 
     rows.sort(key=_sort_key, reverse=True)
     return rows
+
+
+def _serialize_cache_payload(value):
+    return json.dumps(value or {}, sort_keys=True, separators=(",", ":"))
+
+
+def _deserialize_cache_payload(value):
+    if not value:
+        return {}
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}
+
+
+@lru_cache(maxsize=128)
+def _build_mvp_geo_dataset_cached(
+    geographic_level: str,
+    dx_start: str,
+    dx_end: str,
+    filters_json: str,
+    disease_measures_tuple: tuple,
+    support_measures_tuple: tuple,
+    incidence_year: str,
+):
+    return _build_mvp_geo_dataset_uncached(
+        geographic_level=geographic_level,
+        year_range=(dx_start, dx_end),
+        filters=_deserialize_cache_payload(filters_json),
+        disease_measures=list(disease_measures_tuple),
+        support_measures=list(support_measures_tuple),
+        incidence_year=incidence_year or None,
+    )
+
+
+def build_mvp_geo_dataset(
+    geographic_level: str,
+    year_range=("2011", "2022"),
+    filters=None,
+    disease_measures=None,
+    support_measures=None,
+    incidence_year=None,
+):
+    filters = filters or {}
+    dx_start, dx_end = year_range
+    normalized_disease = tuple(sorted(_as_list(disease_measures)))
+    normalized_support = tuple(sorted(_normalize_support_measure_tokens(support_measures)))
+    return _build_mvp_geo_dataset_cached(
+        geographic_level=geographic_level,
+        dx_start=str(dx_start),
+        dx_end=str(dx_end),
+        filters_json=_serialize_cache_payload(filters),
+        disease_measures_tuple=normalized_disease,
+        support_measures_tuple=normalized_support,
+        incidence_year=str(incidence_year or ""),
+    )
+
 
 
 def _age_to_bin(age):
@@ -2333,6 +2425,7 @@ def _get_latest_tiger_tract_year():
     return str(yr) if yr is not None else None
 
 
+@lru_cache(maxsize=8)
 def _get_tract_mammography_access_lookup(year="2013", radius_miles=20.0):
     """
     Builds tract-level mammography facility proximity/access using tract internal
