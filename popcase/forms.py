@@ -243,9 +243,9 @@ class MeasuresForm(forms.Form):
     ]
 
     CANCER_PREVENTION_LEAVES = [
-        ("smoking", "Current cigarette smoking"),
-        ("obesity", "Obesity"),
-        ("binge_drinking", "Binge drinking"),
+        ("smoking", "Current cigarette smoking (of adults)"),
+        ("obesity", "Obesity (of adults)"),
+        ("binge_drinking", "Binge drinking ( of adults)"),
         ("no_leisure_pa", "No leisure-time physical activity"),
         ("short_sleep", "Short sleep duration"),
         ("crc_screen", "Colorectal cancer screening (age 45-75)"),
