@@ -336,6 +336,37 @@ document.addEventListener("DOMContentLoaded", function () {
 
   updateParent();
 });
+
+document.addEventListener("DOMContentLoaded", function () {
+  const raceInputs = Array.from(
+    document.querySelectorAll('input[name="race_ethnicity"]')
+  );
+
+  const allRace = raceInputs.find(input => input.value === "all");
+  const raceChildren = raceInputs.filter(input => input.value !== "all");
+
+  if (!allRace || !raceChildren.length) return;
+
+  function updateAllRaceState() {
+    const checkedCount = raceChildren.filter(input => input.checked).length;
+
+    allRace.checked = checkedCount === raceChildren.length;
+    allRace.indeterminate = checkedCount > 0 && checkedCount < raceChildren.length;
+  }
+
+  allRace.addEventListener("change", function () {
+    raceChildren.forEach(input => {
+      input.checked = allRace.checked;
+    });
+    allRace.indeterminate = false;
+  });
+
+  raceChildren.forEach(input => {
+    input.addEventListener("change", updateAllRaceState);
+  });
+
+  updateAllRaceState();
+});
 </script>
 
 <style>
