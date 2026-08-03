@@ -1,4 +1,6 @@
 from django import forms
+from .models import UICounty
+from .services import OHIO_COUNTY_NAMES
 
 GEO_CHOICES = [
     ("none", "Do not compare locations"),
@@ -142,6 +144,26 @@ class FiltersForm(forms.Form):
         label="Geography"
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        try:
+            county_choices = [
+                (f"county:{row.geoid}", row.name)
+                for row in UICounty.objects.order_by("name")
+            ]
+        except Exception:
+            county_choices = [
+                (f"county:{geoid}", f"{name} County")
+                for geoid, name in sorted(OHIO_COUNTY_NAMES.items(), key=lambda item: item[1])
+            ]
+
+        self.fields["geography"].choices = (
+            GEOGRAPHY_SCOPE_CHOICES
+            + [("", "---------")]
+            + county_choices
+        )
+
     dx_start = forms.ChoiceField(
         choices=DX_YEAR_CHOICES,
         required=False,
@@ -243,9 +265,9 @@ class MeasuresForm(forms.Form):
     ]
 
     CANCER_PREVENTION_LEAVES = [
-        ("smoking", "Current cigarette smoking (of adults)"),
-        ("obesity", "Obesity (of adults)"),
-        ("binge_drinking", "Binge drinking ( of adults)"),
+        ("smoking", "Current cigarette smoking"),
+        ("obesity", "Obesity"),
+        ("binge_drinking", "Binge drinking"),
         ("no_leisure_pa", "No leisure-time physical activity"),
         ("short_sleep", "Short sleep duration"),
         ("crc_screen", "Colorectal cancer screening (age 45-75)"),

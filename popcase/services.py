@@ -171,25 +171,30 @@ def _is_neo15_scope(filters):
     geo_scope = (filters.get("geography") or "all_ohio").strip().lower()
     return geo_scope in ("neo15", "neo_15", "catchment15", "catchment_15")
 
+def _selected_county_geoid(filters):
+    geography = (filters.get("geography") or "").strip()
+    if geography.startswith("county:"):
+        return geography.split(":", 1)[1]
+    return None
 
 def _geoid_in_scope(geographic_level: str, geoid: str, filters: dict) -> bool:
-    if not _is_neo15_scope(filters):
+    selected_county = _selected_county_geoid(filters)
+    if selected_county:
+        g = str(geoid or "").strip()
+
+        if geographic_level == "county":
+            return g == selected_county
+
+        if geographic_level == "tract":
+            return len(g) >= 5 and g[:5] == selected_county
+
         return True
 
-    if not geoid:
-        return False
-
-    g = str(geoid).strip()
-
-    if geographic_level == "county":
-        return g in NEO_15_COUNTY_GEOIDS
-
-    if geographic_level == "tract":
-        return len(g) >= 5 and g[:5] in NEO_15_COUNTY_GEOIDS
-
-    # No county crosswalk implemented here for ZCTA/place yet,
-    # so leave them unchanged for now.
-    return True
+    if not _is_neo15_scope(filters):
+        return True
+    # # No county crosswalk implemented here for ZCTA/place yet,
+    # # so leave them unchanged for now.
+    # return True
 
 
 def _filter_lookup_to_scope(lookup: dict, geographic_level: str, filters: dict) -> dict:
