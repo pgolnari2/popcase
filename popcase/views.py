@@ -811,6 +811,10 @@ def wizard_step(request, step: str = "geographic-level"):
     if step == "filters":
         form.fields["cancer_types"].choices = leaf_choices
 
+    if request.method == "POST" and "prev" in request.POST:
+        prev_step = STEPS[max(0, STEPS.index(step) - 1)]
+        return redirect("popcase:wizard_step", step=prev_step)
+
     if request.method == "POST" and form.is_valid():
         cleaned_data = _clean_session_value(form.cleaned_data)
 
@@ -840,10 +844,6 @@ def wizard_step(request, step: str = "geographic-level"):
 
         if step == "geographic-level":
             _session_set(request, "geographic_level", form.cleaned_data.get("geographic_level", "none"))
-
-        if "prev" in request.POST:
-            prev_step = STEPS[max(0, STEPS.index(step) - 1)]
-            return redirect("popcase:wizard_step", step=prev_step)
 
         if step != STEPS[-1]:
             next_step = STEPS[STEPS.index(step) + 1]

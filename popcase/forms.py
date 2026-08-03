@@ -493,6 +493,24 @@ class MeasuresForm(forms.Form):
     )
 
 
+    MEASURE_SELECTION_FIELDS = (
+        "disease_measures",
+        "access_patient_measures",
+        "cancer_prevention",
+        "noncancer_health_status",
+        "access_comm_tract",
+        "access_comm_zcta_place",
+        "access_comm_county",
+        "community_characteristics",
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        has_measure = any(cleaned.get(field) for field in self.MEASURE_SELECTION_FIELDS)
+        if not has_measure:
+            raise forms.ValidationError("One or more measures must be chosen in order to proceed.")
+        return cleaned
+
 class StratificationForm(forms.Form):
     row_variable = forms.ChoiceField(choices=STRAT_VAR_CHOICES, required=False, label="Row")
     col_variable = forms.ChoiceField(choices=STRAT_VAR_CHOICES, required=False, label="Column")

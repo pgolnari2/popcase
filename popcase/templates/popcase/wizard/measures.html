@@ -73,6 +73,18 @@
   <form method="post">
     {% csrf_token %}
 
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div id="noMeasuresWarning" class="alert alert-warning d-none" role="alert">
+      One or more measures must be chosen in order to proceed.
+    </div>
+
     {% if has_sex_specific_cancers %}
       <div
         id="sexSpecificRateWarning"
@@ -710,13 +722,25 @@
 
     <div class="d-flex justify-content-between mt-3">
       <button class="btn btn-outline-secondary" name="prev" value="1" type="submit">Back</button>
-      <button class="btn btn-primary" type="submit">Next</button>
+      <button class="btn btn-primary" id="measuresNextButton" type="submit">Next</button>
     </div>
   </form>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const warningBox = document.getElementById("sexSpecificRateWarning");
+      const noMeasuresWarning = document.getElementById("noMeasuresWarning");
+      const measuresNextButton = document.getElementById("measuresNextButton");
+      const measureFieldNames = new Set([
+        "disease_measures",
+        "access_patient_measures",
+        "cancer_prevention",
+        "noncancer_health_status",
+        "access_comm_tract",
+        "access_comm_zcta_place",
+        "access_comm_county",
+        "community_characteristics"
+      ]);
       const rateMeasureValues = new Set([
         "crude_inc_rate",
         "crude_mort_rate",
@@ -727,6 +751,28 @@
         "age_adjusted_incidence",
         "age_adjusted_mortality"
       ]);
+
+      function isMeasureCheckbox(cb) {
+        return cb instanceof HTMLInputElement
+          && cb.type === "checkbox"
+          && measureFieldNames.has(cb.name)
+          && !cb.disabled;
+      }
+
+      function updateMeasureSelectionState() {
+        const hasMeasureSelected = Array.from(
+          document.querySelectorAll('input[type="checkbox"]')
+        ).some(function (cb) {
+          return isMeasureCheckbox(cb) && cb.checked;
+        });
+
+        if (measuresNextButton) {
+          measuresNextButton.disabled = !hasMeasureSelected;
+        }
+        if (noMeasuresWarning) {
+          noMeasuresWarning.classList.toggle("d-none", hasMeasureSelected);
+        }
+      }
 
       function toggleSexSpecificWarning() {
         if (!warningBox) return;
@@ -744,7 +790,11 @@
         cb.addEventListener("change", toggleSexSpecificWarning);
       });
 
-      toggleSexSpecificWarning();
+      document.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        if (isMeasureCheckbox(cb)) {
+          cb.addEventListener("change", updateMeasureSelectionState);
+        }
+      });
 
       function getChildCheckboxes(scope) {
         return Array.from(scope.querySelectorAll('input[type="checkbox"]')).filter(function (cb) {
@@ -801,6 +851,7 @@
         parent.addEventListener('change', function () {
           child.checked = parent.checked;
           toggleSexSpecificWarning();
+          updateMeasureSelectionState();
           document.querySelectorAll('.select-all-scope').forEach(syncMaster);
         });
       });
@@ -824,16 +875,22 @@
               child.checked = true;
             }
           });
+          toggleSexSpecificWarning();
+          updateMeasureSelectionState();
         });
 
         children.forEach(function (cb) {
           cb.addEventListener('change', function () {
             syncMaster(scope);
+            updateMeasureSelectionState();
           });
         });
 
         syncMaster(scope);
       });
+
+      toggleSexSpecificWarning();
+      updateMeasureSelectionState();
     });
   </script>
 
