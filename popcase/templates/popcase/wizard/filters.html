@@ -166,7 +166,39 @@
 
                 <div class="mb-3">
                   <label class="form-label d-block">{{ form.stage.label }}</label>
-                  {{ form.stage }}
+
+                  <div id="stage-tree">
+                    <div class="form-check fw-semibold">
+                      <input class="form-check-input stage-parent" type="checkbox" id="stage_all_invasive">
+                      <label class="form-check-label" for="stage_all_invasive">All Invasive Cancer</label>
+                    </div>
+
+                    <div class="ms-4">
+                      {% for value, label in form.stage.field.choices %}
+                        {% if value != "in_situ" %}
+                          <div class="form-check">
+                            <input class="form-check-input stage-invasive-child"
+                                  type="checkbox"
+                                  name="{{ form.stage.name }}"
+                                  value="{{ value }}"
+                                  id="stage_{{ value }}"
+                                  {% if value in form.stage.value %}checked{% endif %}>
+                            <label class="form-check-label" for="stage_{{ value }}">{{ label }}</label>
+                          </div>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+
+                    <div class="form-check fw-semibold mt-2">
+                      <input class="form-check-input"
+                            type="checkbox"
+                            name="{{ form.stage.name }}"
+                            value="in_situ"
+                            id="stage_in_situ"
+                            {% if "in_situ" in form.stage.value %}checked{% endif %}>
+                      <label class="form-check-label" for="stage_in_situ">In situ</label>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="form-check mb-3">
@@ -279,6 +311,30 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     });
   }
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+  const parent = document.getElementById("stage_all_invasive");
+  const children = Array.from(document.querySelectorAll(".stage-invasive-child"));
+
+  function updateParent() {
+    const checked = children.filter(child => child.checked).length;
+    parent.checked = checked === children.length;
+    parent.indeterminate = checked > 0 && checked < children.length;
+  }
+
+  parent.addEventListener("change", function () {
+    children.forEach(child => {
+      child.checked = parent.checked;
+    });
+    updateParent();
+  });
+
+  children.forEach(child => {
+    child.addEventListener("change", updateParent);
+  });
+
+  updateParent();
 });
 </script>
 

@@ -25,12 +25,11 @@ RACE_CHOICES = [
 ]
 
 STAGE_CHOICES = [
-    ("all", "All"),
     ("in_situ", "In situ"),
     ("localized", "Localized"),
     ("regional", "Regional"),
     ("metastatic", "Metastatic"),
-    ("unknown", "Unknown"),
+    ("unknown", "Stage Unknown"),
 ]
 
 CANCER_TYPE_CHOICES = [
@@ -167,6 +166,7 @@ class FiltersForm(forms.Form):
         choices=STAGE_CHOICES,
         widget=forms.CheckboxSelectMultiple,
         required=False,
+        initial=["localized", "regional", "metastatic", "unknown"],
         label="Stage"
     )
 
