@@ -25,6 +25,11 @@ from popcase.services import (
     get_cancer_type_leaf_label,
     is_hidden_cancer_type_leaf,
     build_geo_dataset,
+    get_default_diagnosis_quarter_range,
+    SUPPORT_MEASURE_OUTPUT_SPECS,
+    CI_DISPLAY_OPTION_TO_TOKENS,
+    AGE_ADJUST_DISPLAY_OPTION_TO_TOKENS,
+    _normalize_support_measure_tokens,
 )
 
 from .models import NaaccrPatientCensusLinking
@@ -526,6 +531,59 @@ DATASET_COLUMN_GROUPS = {
     "occupation_production_transportation_material_moving_ci_upper": "Occupational category distribution",
 }
 
+DISEASE_MEASURE_OUTPUT_COLUMNS = {
+    "case_count": ["case_count"],
+    "pct_advanced": ["pct_advanced"],
+    "pct_advanced_ci": ["adv_ci_lower", "adv_ci_upper"],
+    "pct_metastatic": ["pct_metastatic"],
+    "pct_metastatic_ci": ["meta_ci_lower", "meta_ci_upper"],
+    "median_tti": ["median_tti"],
+    "median_tti_iqr": ["median_tti_iqr_lower", "median_tti_iqr_upper"],
+    "crude_inc_rate": ["crude_incidence_per_100k"],
+    "crude_inc_ci": ["crude_inc_ci_lower_per_100k", "crude_inc_ci_upper_per_100k"],
+    "crude_mort_rate": ["crude_mortality_per_100k"],
+    "crude_mort_ci": ["crude_mort_ci_lower_per_100k", "crude_mort_ci_upper_per_100k"],
+    "inc_rate": ["age_adjusted_per_100k"],
+    "inc_ci": ["inc_ci_lower_per_100k", "inc_ci_upper_per_100k"],
+    "mort_rate": ["age_adjusted_mortality_per_100k"],
+    "mort_ci": ["mort_ci_lower_per_100k", "mort_ci_upper_per_100k"],
+    "gleason": ["mean_gleason_score"],
+    "gleason_ci": ["gleason_ci_lower", "gleason_ci_upper"],
+}
+
+SUPPORT_COMPONENT_OUTPUT_COLUMNS = {
+    "sex_distribution": [
+        "male_population", "female_population", "male_pct", "female_pct",
+        "male_pct_ci_lower", "male_pct_ci_upper", "female_pct_ci_lower", "female_pct_ci_upper",
+    ],
+    "race_eth": [
+        "white_alone_pct", "white_alone_ci_lower", "white_alone_ci_upper",
+        "black_alone_pct", "black_alone_ci_lower", "black_alone_ci_upper",
+        "aian_alone_pct", "aian_alone_ci_lower", "aian_alone_ci_upper",
+        "asian_alone_pct", "asian_alone_ci_lower", "asian_alone_ci_upper",
+        "nhpi_alone_pct", "nhpi_alone_ci_lower", "nhpi_alone_ci_upper",
+        "other_race_alone_pct", "other_race_alone_ci_lower", "other_race_alone_ci_upper",
+        "multiracial_pct", "multiracial_ci_lower", "multiracial_ci_upper",
+        "nh_white_pct", "nh_white_ci_lower", "nh_white_ci_upper",
+        "hispanic_pct", "hispanic_ci_lower", "hispanic_ci_upper",
+    ],
+    "employment_16plus": [
+        "employment_labor_force_pct", "employment_labor_force_ci_lower", "employment_labor_force_ci_upper",
+        "employment_employed_pct", "employment_employed_ci_lower", "employment_employed_ci_upper",
+        "employment_unemployed_pct", "employment_unemployed_ci_lower", "employment_unemployed_ci_upper",
+        "employment_not_in_labor_force_pct", "employment_not_in_labor_force_ci_lower", "employment_not_in_labor_force_ci_upper",
+    ],
+    "occupation_dist": [
+        "occupation_management_business_science_arts_pct", "occupation_management_business_science_arts_ci_lower", "occupation_management_business_science_arts_ci_upper",
+        "occupation_service_pct", "occupation_service_ci_lower", "occupation_service_ci_upper",
+        "occupation_sales_office_pct", "occupation_sales_office_ci_lower", "occupation_sales_office_ci_upper",
+        "occupation_natural_resources_construction_maintenance_pct", "occupation_natural_resources_construction_maintenance_ci_lower", "occupation_natural_resources_construction_maintenance_ci_upper",
+        "occupation_production_transportation_material_moving_pct", "occupation_production_transportation_material_moving_ci_lower", "occupation_production_transportation_material_moving_ci_upper",
+    ],
+    "rurality": ["rurality", "rurality_description", "rurality_ci_lower", "rurality_ci_upper"],
+    "pcp_access_score": ["primary_care_access_score"],
+    "mammo_access": ["nearest_mammography_distance_miles", "mammography_facility_count_20mi", "mammography_access_score"],
+}
 class PopcaseLoginView(auth_views.LoginView):
     template_name = "popcase/login.html"
     redirect_authenticated_user = True
@@ -663,6 +721,7 @@ def _build_results_payload_cached(
 def _get_measure_selections(measures_state: dict, geographic_level: str):
     disease_measures = _coerce_to_list(measures_state.get("disease_measures"))
     cancer_prevention_measures = _coerce_to_list(measures_state.get("cancer_prevention"))
+    health_status_measures = _coerce_to_list(measures_state.get("noncancer_health_status"))
     community_measures = _coerce_to_list(measures_state.get("community_characteristics"))
 
     access_field_by_geo = {
@@ -672,10 +731,78 @@ def _get_measure_selections(measures_state: dict, geographic_level: str):
         "place": "access_comm_zcta_place",
     }
     access_measures = _coerce_to_list(measures_state.get(access_field_by_geo.get(geographic_level)))
-    support_measures = _unique_in_order(cancer_prevention_measures + community_measures + access_measures)
+    support_measures = _unique_in_order(
+        cancer_prevention_measures
+        + health_status_measures
+        + access_measures
+        + community_measures
+    )
 
     return disease_measures, support_measures
 
+
+def _ordered_selected_tokens(selected_tokens, choice_groups):
+    selected = set(_coerce_to_list(selected_tokens))
+    ordered = []
+    for choices in choice_groups:
+        for token, _ in choices:
+            if token in selected and token not in ordered:
+                ordered.append(token)
+    for token in _coerce_to_list(selected_tokens):
+        if token not in ordered:
+            ordered.append(token)
+    return ordered
+
+
+def _support_columns_for_token(token, display_options):
+    normalized_tokens = _normalize_support_measure_tokens([token])
+    columns = []
+    for normalized in normalized_tokens:
+        if normalized in SUPPORT_COMPONENT_OUTPUT_COLUMNS:
+            columns.extend(SUPPORT_COMPONENT_OUTPUT_COLUMNS[normalized])
+            continue
+
+        spec = SUPPORT_MEASURE_OUTPUT_SPECS.get(normalized)
+        if not spec:
+            continue
+
+        value_key, ci_low_key, ci_high_key, age_adjusted_key = spec
+        columns.append(value_key)
+        columns.extend([ci_low_key, ci_high_key])
+        if age_adjusted_key:
+            columns.append(age_adjusted_key)
+    return columns
+
+
+def _build_preferred_dataset_columns(disease_measures, support_measures, display_options, geographic_level):
+    disease_order = _ordered_selected_tokens(disease_measures, [MeasuresForm.DISEASE_LEAVES])
+
+    access_choices = {
+        "tract": MeasuresForm.ACCESS_PATIENT_LEAVES + MeasuresForm.SURVEY_ACCESS_LEAVES,
+        "county": MeasuresForm.ACCESS_PATIENT_LEAVES + MeasuresForm.SURVEY_ACCESS_LEAVES,
+        "zcta": MeasuresForm.SURVEY_ACCESS_LEAVES,
+        "place": MeasuresForm.SURVEY_ACCESS_LEAVES,
+    }.get(geographic_level, [])
+    support_order = _ordered_selected_tokens(
+        support_measures,
+        [
+            MeasuresForm.CANCER_PREVENTION_LEAVES,
+            MeasuresForm.HEALTH_STATUS_LEAVES,
+            access_choices,
+            MeasuresForm.COMMUNITY_BASIC_LEAVES,
+            MeasuresForm.COMMUNITY_EXT_LEAVES,
+            MeasuresForm.COMMUNITY_ECON_LEAVES,
+            MeasuresForm.COMMUNITY_HOUSING_LEAVES,
+            MeasuresForm.COMMUNITY_HHCHAR_LEAVES,
+        ],
+    )
+
+    columns = []
+    for token in disease_order:
+        columns.extend(DISEASE_MEASURE_OUTPUT_COLUMNS.get(token, []))
+    for token in support_order:
+        columns.extend(_support_columns_for_token(token, display_options))
+    return list(dict.fromkeys(columns))
 
 def _get_display_options(measures_state: dict):
     display_options = []
@@ -942,8 +1069,9 @@ def results(request):
     community_timeframes = _get_community_timeframes(measures_state)
     disease_measures = _filter_disease_measures_for_geography(disease_measures, geographic_level)
     year = str(_latest_linking_year())
-    dx_start = (filters.get("dx_start") or "2011").strip() or "2011"
-    dx_end = (filters.get("dx_end") or "2022").strip() or "2022"
+    default_dx_start, default_dx_end = get_default_diagnosis_quarter_range()
+    dx_start = (filters.get("dx_start") or default_dx_start).strip() or default_dx_start
+    dx_end = (filters.get("dx_end") or default_dx_end).strip() or default_dx_end
     cancer_type_labels = _build_cancer_type_labels(filters.get("cancer_types") or [])
     age_group_labels = _get_age_group_labels(filters.get("age_groups"), geographic_level)
 
@@ -977,7 +1105,13 @@ def results(request):
         if key not in DATASET_NUMERIC_COLS and isinstance(val, (int, float))
     ]))
 
-    dataset_columns = _build_dataset_columns(dataset_rows, dynamic_header_map)
+    preferred_dataset_columns = _build_preferred_dataset_columns(
+        disease_measures,
+        support_measures,
+        display_options,
+        geographic_level,
+    )
+    dataset_columns = _build_dataset_columns(dataset_rows, dynamic_header_map, preferred_dataset_columns)
     dataset_header_rows, dataset_column_classes = _build_dataset_header_rows(
         dataset_columns,
         dynamic_header_map,
@@ -989,6 +1123,8 @@ def results(request):
         "filters": filters,
         "year": year,
         "geographic_level": geographic_level,
+        "dx_start": dx_start,
+        "dx_end": dx_end,
         "incidence": incidence,
         "total_incidence": total_incidence,
         "dataset_rows": dataset_rows_preview,
@@ -1087,8 +1223,9 @@ def export_geo_dataset_csv(request):
     community_timeframes = _get_community_timeframes(measures_state)
     disease_measures = _filter_disease_measures_for_geography(disease_measures, geographic_level)
 
-    dx_start = (filters.get("dx_start") or "2011").strip() or "2011"
-    dx_end = (filters.get("dx_end") or "2022").strip() or "2022"
+    default_dx_start, default_dx_end = get_default_diagnosis_quarter_range()
+    dx_start = (filters.get("dx_start") or default_dx_start).strip() or default_dx_start
+    dx_end = (filters.get("dx_end") or default_dx_end).strip() or default_dx_end
     latest_year = str(_latest_linking_year())
 
     if geographic_level == "total":
@@ -1114,7 +1251,13 @@ def export_geo_dataset_csv(request):
     response.write("\ufeff")
 
     dynamic_header_map = _with_dynamic_community_headers(DATASET_HEADER_MAP, rows)
-    columns = _build_dataset_columns(rows, dynamic_header_map)
+    preferred_dataset_columns = _build_preferred_dataset_columns(
+        disease_measures,
+        support_measures,
+        display_options,
+        geographic_level,
+    )
+    columns = _build_dataset_columns(rows, dynamic_header_map, preferred_dataset_columns)
     if not columns:
         columns = ["label"]
 
@@ -1206,24 +1349,42 @@ def _build_dataset_header_rows(columns, header_map, numeric_cols):
 
     return header_rows, column_classes
 
-def _build_dataset_columns(rows, header_map):
+def _build_dataset_columns(rows, header_map, preferred_columns=None):
     if not rows:
         return []
 
-    preferred = [col for col in header_map.keys() if col not in DATASET_EXCLUDE_COLUMNS]
     present = set()
 
     for row in rows:
         present.update(row.keys())
 
     present -= DATASET_EXCLUDE_COLUMNS
-    ordered = [col for col in preferred if col in present]
+    ordered = []
+
+    def add_column(col):
+        if col in DATASET_EXCLUDE_COLUMNS:
+            return
+        if col in present and col not in ordered:
+            ordered.append(col)
+
+    def add_preferred_column(col):
+        add_column(col)
+        prefix = f"{col}__"
+        for candidate in sorted(present):
+            if candidate.startswith(prefix) and candidate not in ordered:
+                ordered.append(candidate)
+
+    for col in ("label", "geoid", "tract_geoid"):
+        add_column(col)
+
+    for col in preferred_columns or []:
+        add_preferred_column(col)
+
+    for col in header_map.keys():
+        add_preferred_column(col)
 
     for row in rows:
         for col in row.keys():
-            if col in DATASET_EXCLUDE_COLUMNS:
-                continue
-            if col not in ordered:
-                ordered.append(col)
+            add_column(col)
 
     return ordered

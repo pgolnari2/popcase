@@ -59,6 +59,128 @@ AGE_GROUP_RANGES = {
     "age_90_plus": (90, None),
 }
 
+
+DIAGNOSIS_QUARTER_FALLBACK_START = "2011q1"
+DIAGNOSIS_QUARTER_FALLBACK_END = "2022q4"
+QUARTER_START_END_DATES = {
+    1: ("0101", "0331"),
+    2: ("0401", "0630"),
+    3: ("0701", "0930"),
+    4: ("1001", "1231"),
+}
+
+
+def _diagnosis_quarter_sort_key(value):
+    m = re.match(r"^\s*(\d{4})\s*[qQ]\s*([1-4])\s*$", str(value or ""))
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def _diagnosis_quarter_from_date_value(value):
+    if value is None:
+        return None
+    digits = re.sub(r"\D", "", str(value).strip())
+    if len(digits) != 8 or digits in {"00000000", "88888888", "99999999"}:
+        return None
+    try:
+        year = int(digits[:4])
+        month = int(digits[4:6])
+    except ValueError:
+        return None
+    if month < 1 or month > 12:
+        return None
+    return f"{year}q{((month - 1) // 3) + 1}"
+
+
+def _diagnosis_quarter_from_year_value(value, quarter):
+    try:
+        year = int(str(value or "").strip())
+    except ValueError:
+        return None
+    return f"{year}q{quarter}"
+
+
+def diagnosis_quarter_sort_key(value):
+    return _diagnosis_quarter_sort_key(value)
+
+def diagnosis_quarter_bounds(value):
+    key = _diagnosis_quarter_sort_key(value)
+    if not key:
+        return None
+    year, quarter = key
+    start_mmdd, end_mmdd = QUARTER_START_END_DATES[quarter]
+    return f"{year}{start_mmdd}", f"{year}{end_mmdd}"
+
+
+def _iter_quarters(start, end):
+    start_key = _diagnosis_quarter_sort_key(start)
+    end_key = _diagnosis_quarter_sort_key(end)
+    if not start_key or not end_key:
+        return []
+    sy, sq = start_key
+    ey, eq = end_key
+    if (sy, sq) > (ey, eq):
+        sy, sq, ey, eq = ey, eq, sy, sq
+
+    quarters = []
+    year, quarter = sy, sq
+    while (year, quarter) <= (ey, eq):
+        value = f"{year}q{quarter}"
+        quarters.append((value, value))
+        quarter += 1
+        if quarter > 4:
+            year += 1
+            quarter = 1
+    return quarters
+
+
+@lru_cache(maxsize=1)
+def get_diagnosis_quarter_choices():
+    start = end = None
+
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                '''
+                SELECT MIN("Date of Diagnosis"), MAX("Date of Diagnosis")
+                FROM naaccr_data
+                WHERE "Date of Diagnosis" IS NOT NULL
+                  AND "Date of Diagnosis" NOT IN ('', '00000000', '88888888', '99999999')
+                '''
+            )
+            raw_start, raw_end = cur.fetchone() or (None, None)
+        start = _diagnosis_quarter_from_date_value(raw_start)
+        end = _diagnosis_quarter_from_date_value(raw_end)
+    except Exception:
+        start = end = None
+
+    if not start or not end:
+        try:
+            years = list(
+                NaaccrData.objects
+                .exclude(dx_year__isnull=True)
+                .exclude(dx_year="")
+                .values_list("dx_year", flat=True)
+                .distinct()
+            )
+            parsed_years = sorted({int(str(y).strip()) for y in years if str(y).strip().isdigit()})
+            if parsed_years:
+                start = _diagnosis_quarter_from_year_value(parsed_years[0], 1)
+                end = _diagnosis_quarter_from_year_value(parsed_years[-1], 4)
+        except Exception:
+            start = end = None
+
+    start = start or DIAGNOSIS_QUARTER_FALLBACK_START
+    end = end or DIAGNOSIS_QUARTER_FALLBACK_END
+    return tuple(_iter_quarters(start, end))
+
+
+def get_default_diagnosis_quarter_range():
+    choices = get_diagnosis_quarter_choices()
+    if not choices:
+        return DIAGNOSIS_QUARTER_FALLBACK_START, DIAGNOSIS_QUARTER_FALLBACK_END
+    return choices[0][0], choices[-1][0]
 OHIO_COUNTY_NAMES = {
     "39001": "Adams", "39003": "Allen", "39005": "Ashland", "39007": "Ashtabula",
     "39009": "Athens", "39011": "Auglaize", "39013": "Belmont", "39015": "Brown",
@@ -784,12 +906,19 @@ def apply_naaccr_filters(qs, filters: dict):
                 qs = qs.filter(age_dx_int__lte=int(age_to))
     dx_start = (filters.get("dx_start") or "").strip()
     dx_end = (filters.get("dx_end") or "").strip()
+    dx_start_bounds = diagnosis_quarter_bounds(dx_start)
+    dx_end_bounds = diagnosis_quarter_bounds(dx_end)
 
-    if dx_start:
-        qs = qs.filter(dx_year__gte=dx_start)
-    if dx_end:
-        qs = qs.filter(dx_year__lte=dx_end)
-
+    if dx_start_bounds or dx_end_bounds:
+        if dx_start_bounds:
+            qs = qs.filter(dx_date__gte=dx_start_bounds[0])
+        if dx_end_bounds:
+            qs = qs.filter(dx_date__lte=dx_end_bounds[1])
+    else:
+        if dx_start:
+            qs = qs.filter(dx_year__gte=dx_start)
+        if dx_end:
+            qs = qs.filter(dx_year__lte=dx_end)
     geo_scope = (filters.get("geography") or "all_ohio").strip().lower()
     if geo_scope in ("neo15", "neo_15", "catchment15", "catchment_15"):
         neo_pat_ids = (
@@ -2657,11 +2786,14 @@ def _normalize_community_timeframes(value):
 
 
 def _as_int_year(value, default):
+    text = str(value or "").strip()
+    quarter_key = _diagnosis_quarter_sort_key(text)
+    if quarter_key:
+        return quarter_key[0]
     try:
-        return int(str(value).strip())
+        return int(text)
     except Exception:
         return default
-
 
 def _community_period_plan(dx_start, dx_end, selected_timeframes, geographic_level, support_measures):
     """Return community source periods selected by the Measures page options."""

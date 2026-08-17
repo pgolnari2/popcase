@@ -10,6 +10,7 @@ class NaaccrData(models.Model):
     race1 = models.TextField(db_column="Race 1", null=True, blank=True)
     stg_grp = models.TextField(db_column="Summary Stage 2018", null=True, blank=True)
     dx_year = models.TextField(db_column="Date of Diagnosis (Year)", null=True, blank=True)
+    dx_date = models.TextField(db_column="Date of Diagnosis", null=True, blank=True)
     er_summ = models.TextField(db_column="Estrogen Receptor Summary", null=True, blank=True)
     her_summ = models.TextField(db_column="HER2 Overall Summary", null=True, blank=True)
     ssf1 = models.TextField(db_column="CS Site-Specific Factor 1", null=True, blank=True)

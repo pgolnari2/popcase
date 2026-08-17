@@ -64,9 +64,9 @@
         <div class="d-flex flex-wrap gap-2">
         <span class="badge text-bg-light border">
           <strong>Dx Year:</strong>
-          {% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}
+          {{ dx_start }}
           &ndash;
-          {% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %}
+          {{ dx_end }}
         </span>
 
           <span class="badge text-bg-light border">
@@ -165,7 +165,7 @@
         <div class="d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
               {{ dataset_title|default:"Selected measures by geography" }}
-              ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}&ndash;{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %})
+              ({{ dx_start }}&ndash;{{ dx_end }})
             </h5>
           <a class="btn btn-outline-primary btn-sm" href="{% url 'popcase:export_geo_dataset_csv' %}">
             Download Results (CSV)
@@ -281,7 +281,7 @@
 {% else %}
   <p class="text-muted mt-3">
     No outcomes found for the selected filters
-    ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}&ndash;{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %}).
+    ({{ dx_start }}&ndash;{{ dx_end }}).
   </p>
 {% endif %}
       {% else %}

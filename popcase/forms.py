@@ -1,6 +1,6 @@
 from django import forms
 from .models import UICounty
-from .services import OHIO_COUNTY_NAMES
+from .services import OHIO_COUNTY_NAMES, get_default_diagnosis_quarter_range, get_diagnosis_quarter_choices, diagnosis_quarter_sort_key
 
 GEO_CHOICES = [
     ("none", "Do not compare locations"),
@@ -111,9 +111,8 @@ GEOGRAPHY_SCOPE_CHOICES = [
     ("neo15", "Northeast Ohio catchment area (15 counties)"),
 ]
 
-# Diagnosis year choices (Filters step)
-# initial configured use case: 2011–2022 (you can later populate dynamically from DB)
-DX_YEAR_CHOICES = [("", "Any")] + [(str(y), str(y)) for y in range(2011, 2023)]
+# Diagnosis quarter choices are populated dynamically in FiltersForm.__init__.
+DX_QUARTER_FALLBACK_CHOICES = [(f"{year}q{quarter}", f"{year}q{quarter}") for year in range(2011, 2023) for quarter in range(1, 5)]
 
 
 class GeographicLevelForm(forms.Form):
@@ -201,6 +200,16 @@ class FiltersForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["age_groups"].choices = self.get_age_group_choices_for_geography(geographic_level)
 
+        diagnosis_quarter_choices = get_diagnosis_quarter_choices() or tuple(DX_QUARTER_FALLBACK_CHOICES)
+        default_dx_start, default_dx_end = get_default_diagnosis_quarter_range()
+        self.fields["dx_start"].choices = diagnosis_quarter_choices
+        self.fields["dx_end"].choices = diagnosis_quarter_choices
+        self.fields["dx_start"].initial = default_dx_start
+        self.fields["dx_end"].initial = default_dx_end
+        if not self.is_bound:
+            self.initial.setdefault("dx_start", default_dx_start)
+            self.initial.setdefault("dx_end", default_dx_end)
+
         try:
             county_choices = [
                 (f"county:{row.geoid}", row.name)
@@ -219,17 +228,17 @@ class FiltersForm(forms.Form):
         )
 
     dx_start = forms.ChoiceField(
-        choices=DX_YEAR_CHOICES,
+        choices=DX_QUARTER_FALLBACK_CHOICES,
         required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
-        label="Diagnosis year from"
+        label="Diagnosis quarter from"
     )
 
     dx_end = forms.ChoiceField(
-        choices=DX_YEAR_CHOICES,
+        choices=DX_QUARTER_FALLBACK_CHOICES,
         required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
-        label="Diagnosis year to"
+        label="Diagnosis quarter to"
     )
 
     cancer_types = forms.MultipleChoiceField(
@@ -268,11 +277,10 @@ class FiltersForm(forms.Form):
         s = cleaned.get("dx_start")
         e = cleaned.get("dx_end")
         if s and e:
-            try:
-                if int(s) > int(e):
-                    self.add_error("dx_end", "Diagnosis year 'to' must be >= diagnosis year 'from'.")
-            except ValueError:
-                pass
+            start_key = diagnosis_quarter_sort_key(s)
+            end_key = diagnosis_quarter_sort_key(e)
+            if start_key and end_key and start_key > end_key:
+                self.add_error("dx_end", "Diagnosis quarter 'to' must be >= diagnosis quarter 'from'.")
         return cleaned
 
 class MeasuresForm(forms.Form):
