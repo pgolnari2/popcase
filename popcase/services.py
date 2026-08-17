@@ -149,9 +149,21 @@ US2000_STD_WEIGHTS = {
 # NORTHEAST OHIO (15-county) catchment scope
 # ---------------------------------------------------------
 NEO_15_COUNTY_GEOIDS = {
-    "39007", "39019", "39029", "39035", "39055",
-    "39085", "39093", "39099", "39103", "39133",
-    "39151", "39153", "39155", "39157", "39169",
+    "39005",  # Ashland
+    "39007",  # Ashtabula
+    "39035",  # Cuyahoga
+    "39043",  # Erie
+    "39055",  # Geauga
+    "39077",  # Huron
+    "39085",  # Lake
+    "39093",  # Lorain
+    "39099",  # Mahoning
+    "39103",  # Medina
+    "39133",  # Portage
+    "39151",  # Stark
+    "39153",  # Summit
+    "39155",  # Trumbull
+    "39169",  # Wayne
 }
 
 # ---------------------------------------------------------
@@ -217,10 +229,16 @@ def _geoid_in_scope(geographic_level: str, geoid: str, filters: dict) -> bool:
 
     if not _is_neo15_scope(filters):
         return True
-    # # No county crosswalk implemented here for ZCTA/place yet,
-    # # so leave them unchanged for now.
-    # return True
 
+    g = str(geoid or "").strip()
+    if geographic_level == "county":
+        return g in NEO_15_COUNTY_GEOIDS
+    if geographic_level == "tract":
+        return len(g) >= 5 and g[:5] in NEO_15_COUNTY_GEOIDS
+
+    # No county crosswalk is implemented here for ZCTA/place yet, so leave
+    # those geography levels unchanged rather than filtering everything out.
+    return True
 
 def _filter_lookup_to_scope(lookup: dict, geographic_level: str, filters: dict) -> dict:
     if not lookup:
