@@ -125,10 +125,58 @@ class GeographicLevelForm(forms.Form):
     )
 
 
+SEER_20_AGE_GROUP_CHOICES = [
+    ("age_00", "00 years"),
+    ("age_01_04", "01-04 years"),
+    ("age_05_09", "05-09 years"),
+    ("age_10_14", "10-14 years"),
+    ("age_15_19", "15-19 years"),
+    ("age_20_24", "20-24 years"),
+    ("age_25_29", "25-29 years"),
+    ("age_30_34", "30-34 years"),
+    ("age_35_39", "35-39 years"),
+    ("age_40_44", "40-44 years"),
+    ("age_45_49", "45-49 years"),
+    ("age_50_54", "50-54 years"),
+    ("age_55_59", "55-59 years"),
+    ("age_60_64", "60-64 years"),
+    ("age_65_69", "65-69 years"),
+    ("age_70_74", "70-74 years"),
+    ("age_75_79", "75-79 years"),
+    ("age_80_84", "80-84 years"),
+    ("age_85_89", "85-89 years"),
+    ("age_90_plus", "90+ years"),
+]
+
+ZCTA_PLACE_AGE_GROUP_CHOICES = [
+    ("age_00_04", "0-4 years"),
+    ("age_05_09", "05-09 years"),
+    ("age_10_14", "10-14 years"),
+    ("age_15_19", "15-19 years"),
+    ("age_20_24", "20-24 years"),
+    ("age_25_29", "25-29 years"),
+    ("age_30_34", "30-34 years"),
+    ("age_35_39", "35-39 years"),
+    ("age_40_44", "40-44 years"),
+    ("age_45_49", "45-49 years"),
+    ("age_50_54", "50-54 years"),
+    ("age_55_59", "55-59 years"),
+    ("age_60_64", "60-64 years"),
+    ("age_65_69", "65-69 years"),
+    ("age_70_74", "70-74 years"),
+    ("age_75_79", "75-79 years"),
+    ("age_80_84", "80-84 years"),
+    ("age_85_plus", "85+ years"),
+]
+
 class FiltersForm(forms.Form):
     sex = forms.ChoiceField(choices=SEX_CHOICES, widget=forms.RadioSelect, initial="all", label="Sex")
-    age_from = forms.IntegerField(required=False, min_value=0, max_value=120, label="Age from", widget=forms.NumberInput(attrs={"class": "form-control", "inputmode": "numeric"}))
-    age_to = forms.IntegerField(required=False, min_value=0, max_value=120, label="Age to", widget=forms.NumberInput(attrs={"class": "form-control", "inputmode": "numeric"}))
+    age_groups = forms.MultipleChoiceField(
+        choices=SEER_20_AGE_GROUP_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label="Age (at diagnosis) groups",
+    )
     race_ethnicity = forms.MultipleChoiceField(
         choices=RACE_CHOICES,
         widget=forms.CheckboxSelectMultiple,
@@ -144,8 +192,14 @@ class FiltersForm(forms.Form):
         label="Geography"
     )
 
+    @classmethod
+    def get_age_group_choices_for_geography(cls, geographic_level):
+        return ZCTA_PLACE_AGE_GROUP_CHOICES if geographic_level in {"zcta", "place"} else SEER_20_AGE_GROUP_CHOICES
+
     def __init__(self, *args, **kwargs):
+        geographic_level = kwargs.pop("geographic_level", "none")
         super().__init__(*args, **kwargs)
+        self.fields["age_groups"].choices = self.get_age_group_choices_for_geography(geographic_level)
 
         try:
             county_choices = [
@@ -211,9 +265,6 @@ class FiltersForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        a, b = cleaned.get("age_from"), cleaned.get("age_to")
-        if a is not None and b is not None and a > b:
-            self.add_error("age_to", "Age 'to' must be >= age 'from'.")
         s = cleaned.get("dx_start")
         e = cleaned.get("dx_end")
         if s and e:

@@ -34,6 +34,31 @@ from popcase.models import (
 # CONSTANTS
 # ---------------------------------------------------------
 
+AGE_GROUP_RANGES = {
+    "age_00": (0, 0),
+    "age_01_04": (1, 4),
+    "age_00_04": (0, 4),
+    "age_05_09": (5, 9),
+    "age_10_14": (10, 14),
+    "age_15_19": (15, 19),
+    "age_20_24": (20, 24),
+    "age_25_29": (25, 29),
+    "age_30_34": (30, 34),
+    "age_35_39": (35, 39),
+    "age_40_44": (40, 44),
+    "age_45_49": (45, 49),
+    "age_50_54": (50, 54),
+    "age_55_59": (55, 59),
+    "age_60_64": (60, 64),
+    "age_65_69": (65, 69),
+    "age_70_74": (70, 74),
+    "age_75_79": (75, 79),
+    "age_80_84": (80, 84),
+    "age_85_89": (85, 89),
+    "age_85_plus": (85, None),
+    "age_90_plus": (90, None),
+}
+
 OHIO_COUNTY_NAMES = {
     "39001": "Adams", "39003": "Allen", "39005": "Ashland", "39007": "Ashtabula",
     "39009": "Athens", "39011": "Auglaize", "39013": "Belmont", "39015": "Brown",
@@ -716,15 +741,29 @@ def apply_naaccr_filters(qs, filters: dict):
             sex_code = s
         qs = qs.filter(sex=sex_code)
 
-    age_from = filters.get("age_from")
-    age_to = filters.get("age_to")
-    if age_from is not None or age_to is not None:
-        qs = qs.annotate(age_dx_int=Cast("age_at_dx", IntegerField()))
-        if age_from not in (None, ""):
-            qs = qs.filter(age_dx_int__gte=int(age_from))
-        if age_to not in (None, ""):
-            qs = qs.filter(age_dx_int__lte=int(age_to))
+    age_groups = filters.get("age_groups") or []
+    if isinstance(age_groups, str):
+        age_groups = [age_groups]
+    age_ranges = [AGE_GROUP_RANGES[group] for group in age_groups if group in AGE_GROUP_RANGES]
 
+    if age_ranges:
+        qs = qs.annotate(age_dx_int=Cast("age_at_dx", IntegerField()))
+        age_q = Q()
+        for low, high in age_ranges:
+            if high is None:
+                age_q |= Q(age_dx_int__gte=low)
+            else:
+                age_q |= Q(age_dx_int__gte=low, age_dx_int__lte=high)
+        qs = qs.filter(age_q)
+    else:
+        age_from = filters.get("age_from")
+        age_to = filters.get("age_to")
+        if age_from is not None or age_to is not None:
+            qs = qs.annotate(age_dx_int=Cast("age_at_dx", IntegerField()))
+            if age_from not in (None, ""):
+                qs = qs.filter(age_dx_int__gte=int(age_from))
+            if age_to not in (None, ""):
+                qs = qs.filter(age_dx_int__lte=int(age_to))
     dx_start = (filters.get("dx_start") or "").strip()
     dx_end = (filters.get("dx_end") or "").strip()
 

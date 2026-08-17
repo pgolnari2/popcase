@@ -37,18 +37,21 @@
                   {% endfor %}
                 </div>
 
-                <div class="row">
-                  <div class="col-6 mb-3">
-                    <label class="form-label" for="{{ form.age_from.id_for_label }}">{{ form.age_from.label }}</label>
-                    {{ form.age_from }}
+                <div class="mb-3">
+                  <label class="form-label d-block">{{ form.age_groups.label }}</label>
+                  <div class="row row-cols-1 row-cols-sm-2 g-1">
+                    {% for checkbox in form.age_groups %}
+                      <div class="col">
+                        <div class="form-check">
+                          {{ checkbox.tag }}
+                          <label class="form-check-label" for="{{ checkbox.id_for_label }}">{{ checkbox.choice_label }}</label>
+                        </div>
+                      </div>
+                    {% endfor %}
                   </div>
-                  <div class="col-6 mb-3">
-                    <label class="form-label" for="{{ form.age_to.id_for_label }}">{{ form.age_to.label }}</label>
-                    {{ form.age_to }}
-                  </div>
-                  {% if form.age_to.errors %}<div class="text-danger small">{{ form.age_to.errors }}</div>{% endif %}
+                  <div class="form-text">Leave blank for All.</div>
+                  {% if form.age_groups.errors %}<div class="text-danger small">{{ form.age_groups.errors }}</div>{% endif %}
                 </div>
-
                 <div class="mb-3">
                   <label class="form-label d-block">{{ form.race_ethnicity.label }}</label>
                   {{ form.race_ethnicity }}

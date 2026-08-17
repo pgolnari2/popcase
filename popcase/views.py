@@ -467,6 +467,65 @@ DATASET_EXCLUDE_COLUMNS = {
 
 
 
+DATASET_COLUMN_GROUPS = {
+    "white_alone_pct": "Race/Ethnicity",
+    "white_alone_ci_lower": "Race/Ethnicity",
+    "white_alone_ci_upper": "Race/Ethnicity",
+    "black_alone_pct": "Race/Ethnicity",
+    "black_alone_ci_lower": "Race/Ethnicity",
+    "black_alone_ci_upper": "Race/Ethnicity",
+    "aian_alone_pct": "Race/Ethnicity",
+    "aian_alone_ci_lower": "Race/Ethnicity",
+    "aian_alone_ci_upper": "Race/Ethnicity",
+    "asian_alone_pct": "Race/Ethnicity",
+    "asian_alone_ci_lower": "Race/Ethnicity",
+    "asian_alone_ci_upper": "Race/Ethnicity",
+    "nhpi_alone_pct": "Race/Ethnicity",
+    "nhpi_alone_ci_lower": "Race/Ethnicity",
+    "nhpi_alone_ci_upper": "Race/Ethnicity",
+    "other_race_alone_pct": "Race/Ethnicity",
+    "other_race_alone_ci_lower": "Race/Ethnicity",
+    "other_race_alone_ci_upper": "Race/Ethnicity",
+    "multiracial_pct": "Race/Ethnicity",
+    "multiracial_ci_lower": "Race/Ethnicity",
+    "multiracial_ci_upper": "Race/Ethnicity",
+    "nh_white_pct": "Race/Ethnicity",
+    "nh_white_ci_lower": "Race/Ethnicity",
+    "nh_white_ci_upper": "Race/Ethnicity",
+    "hispanic_pct": "Race/Ethnicity",
+    "hispanic_ci_lower": "Race/Ethnicity",
+    "hispanic_ci_upper": "Race/Ethnicity",
+
+    "employment_labor_force_pct": "Employment status for population >=16 years",
+    "employment_labor_force_ci_lower": "Employment status for population >=16 years",
+    "employment_labor_force_ci_upper": "Employment status for population >=16 years",
+    "employment_employed_pct": "Employment status for population >=16 years",
+    "employment_employed_ci_lower": "Employment status for population >=16 years",
+    "employment_employed_ci_upper": "Employment status for population >=16 years",
+    "employment_unemployed_pct": "Employment status for population >=16 years",
+    "employment_unemployed_ci_lower": "Employment status for population >=16 years",
+    "employment_unemployed_ci_upper": "Employment status for population >=16 years",
+    "employment_not_in_labor_force_pct": "Employment status for population >=16 years",
+    "employment_not_in_labor_force_ci_lower": "Employment status for population >=16 years",
+    "employment_not_in_labor_force_ci_upper": "Employment status for population >=16 years",
+
+    "occupation_management_business_science_arts_pct": "Occupational category distribution",
+    "occupation_management_business_science_arts_ci_lower": "Occupational category distribution",
+    "occupation_management_business_science_arts_ci_upper": "Occupational category distribution",
+    "occupation_service_pct": "Occupational category distribution",
+    "occupation_service_ci_lower": "Occupational category distribution",
+    "occupation_service_ci_upper": "Occupational category distribution",
+    "occupation_sales_office_pct": "Occupational category distribution",
+    "occupation_sales_office_ci_lower": "Occupational category distribution",
+    "occupation_sales_office_ci_upper": "Occupational category distribution",
+    "occupation_natural_resources_construction_maintenance_pct": "Occupational category distribution",
+    "occupation_natural_resources_construction_maintenance_ci_lower": "Occupational category distribution",
+    "occupation_natural_resources_construction_maintenance_ci_upper": "Occupational category distribution",
+    "occupation_production_transportation_material_moving_pct": "Occupational category distribution",
+    "occupation_production_transportation_material_moving_ci_lower": "Occupational category distribution",
+    "occupation_production_transportation_material_moving_ci_upper": "Occupational category distribution",
+}
+
 class PopcaseLoginView(auth_views.LoginView):
     template_name = "popcase/login.html"
     redirect_authenticated_user = True
@@ -519,6 +578,12 @@ def _deserialize_payload(value):
     except Exception:
         return {}
 
+
+def _get_age_group_labels(age_groups, geographic_level: str):
+    choices = dict(FiltersForm.get_age_group_choices_for_geography("tract"))
+    choices.update(dict(FiltersForm.get_age_group_choices_for_geography("place")))
+    choices.update(dict(FiltersForm.get_age_group_choices_for_geography(geographic_level)))
+    return [choices.get(value, value) for value in _coerce_to_list(age_groups) if value]
 
 def _filter_disease_measures_for_geography(disease_measures, geographic_level: str):
     disease_measures = _coerce_to_list(disease_measures)
@@ -807,7 +872,10 @@ def wizard_step(request, step: str = "geographic-level"):
         cancer_tree, leaf_meta = get_cancer_type_tree()
         leaf_choices = _build_cancer_type_leaf_choices(leaf_meta)
 
-    form = FormClass(request.POST or None, initial=None if request.method == "POST" else initial)
+    form_kwargs = {"initial": None if request.method == "POST" else initial}
+    if step == "filters":
+        form_kwargs["geographic_level"] = _normalize_geographic_level(_session_get(request, "geographic_level", "none"))
+    form = FormClass(request.POST or None, **form_kwargs)
     if step == "filters":
         form.fields["cancer_types"].choices = leaf_choices
 
@@ -877,6 +945,7 @@ def results(request):
     dx_start = (filters.get("dx_start") or "2011").strip() or "2011"
     dx_end = (filters.get("dx_end") or "2022").strip() or "2022"
     cancer_type_labels = _build_cancer_type_labels(filters.get("cancer_types") or [])
+    age_group_labels = _get_age_group_labels(filters.get("age_groups"), geographic_level)
 
     payload = _build_results_payload_cached(
         geographic_level=geographic_level,
@@ -908,6 +977,13 @@ def results(request):
         if key not in DATASET_NUMERIC_COLS and isinstance(val, (int, float))
     ]))
 
+    dataset_columns = _build_dataset_columns(dataset_rows, dynamic_header_map)
+    dataset_header_rows, dataset_column_classes = _build_dataset_header_rows(
+        dataset_columns,
+        dynamic_header_map,
+        dynamic_numeric_cols,
+    )
+
     context = {
         "wizard_state": wizard,
         "filters": filters,
@@ -925,13 +1001,16 @@ def results(request):
         "display_options": display_options,
         "community_timeframes": community_timeframes,
         "cancer_type_labels": cancer_type_labels,
+        "age_group_labels": age_group_labels,
         "dataset_title": f"Selected measures by {geographic_level.title()}",
         "dataset_header_map": dynamic_header_map,
         "dataset_numeric_cols": dynamic_numeric_cols,
         # Backward-compatible context aliases for older templates/custom tags.
         "tract_header_map": dynamic_header_map,
         "tract_numeric_cols": dynamic_numeric_cols,
-        "dataset_columns": _build_dataset_columns(dataset_rows, dynamic_header_map),
+        "dataset_columns": dataset_columns,
+        "dataset_header_rows": dataset_header_rows,
+        "dataset_column_classes": dataset_column_classes,
         "dataset_exclude_columns": DATASET_EXCLUDE_COLUMNS,
     }
     return render(request, "popcase/results.html", context)
@@ -1046,6 +1125,86 @@ def export_geo_dataset_csv(request):
         writer.writerow(["" if row.get(col) is None else row.get(col, "") for col in columns])
 
     return response
+
+
+def _dataset_sort_type(column, numeric_cols):
+    return "number" if column in numeric_cols else "string"
+
+
+def _dataset_header_cell(column, header_map, numeric_cols, col_index, row_span=1, extra_classes=""):
+    classes = ["sortable"]
+    if column in numeric_cols:
+        classes.append("text-end")
+    if column == "label":
+        classes.extend(["bg-light", "results-sticky-column"])
+    if extra_classes:
+        classes.extend(extra_classes.split())
+
+    return {
+        "key": column,
+        "label": header_map.get(column, column),
+        "sort_type": _dataset_sort_type(column, numeric_cols),
+        "col_index": col_index,
+        "col_span": 1,
+        "row_span": row_span,
+        "classes": " ".join(dict.fromkeys(classes)),
+    }
+
+
+def _build_dataset_header_rows(columns, header_map, numeric_cols):
+    has_groups = any(column in DATASET_COLUMN_GROUPS for column in columns)
+    column_classes = {}
+    header_rows = {"has_groups": has_groups, "top": [], "leaf": []}
+    if not columns:
+        return header_rows, column_classes
+
+    if not has_groups:
+        header_rows["top"] = [
+            _dataset_header_cell(column, header_map, numeric_cols, index)
+            for index, column in enumerate(columns)
+        ]
+        return header_rows, column_classes
+
+    index = 0
+    while index < len(columns):
+        column = columns[index]
+        group_label = DATASET_COLUMN_GROUPS.get(column)
+
+        if not group_label:
+            header_rows["top"].append(
+                _dataset_header_cell(column, header_map, numeric_cols, index, row_span=2)
+            )
+            index += 1
+            continue
+
+        start_index = index
+        grouped_columns = []
+        while index < len(columns) and DATASET_COLUMN_GROUPS.get(columns[index]) == group_label:
+            grouped_columns.append(columns[index])
+            index += 1
+
+        header_rows["top"].append({
+            "key": None,
+            "label": group_label,
+            "col_span": len(grouped_columns),
+            "row_span": 1,
+            "classes": "results-column-group results-group-start",
+        })
+        for offset, grouped_column in enumerate(grouped_columns):
+            extra_classes = "results-group-start" if offset == 0 else ""
+            if offset == 0:
+                column_classes[grouped_column] = "results-group-start"
+            header_rows["leaf"].append(
+                _dataset_header_cell(
+                    grouped_column,
+                    header_map,
+                    numeric_cols,
+                    start_index + offset,
+                    extra_classes=extra_classes,
+                )
+            )
+
+    return header_rows, column_classes
 
 def _build_dataset_columns(rows, header_map):
     if not rows:

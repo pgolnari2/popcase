@@ -19,9 +19,16 @@
       background: var(--bs-table-bg, #fff);
     }
 
-    .results-table th:first-child {
+    .results-table thead tr:nth-child(2) th {
+      top: 2.5rem;
+      z-index: 4;
+    }
+
+    .results-table thead tr:first-child th:first-child,
+    .results-table .results-sticky-column {
+      position: sticky;
       left: 0;
-      z-index: 5;
+      z-index: 6;
     }
 
     .results-table td:first-child {
@@ -29,6 +36,16 @@
       left: 0;
       z-index: 2;
       background: #fff;
+    }
+
+    .results-column-group {
+      text-align: center;
+      font-weight: 600;
+      border-bottom-width: 1px;
+    }
+
+    .results-group-start {
+      border-left: 2px solid #adb5bd !important;
     }
   </style>
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -48,7 +65,7 @@
         <span class="badge text-bg-light border">
           <strong>Dx Year:</strong>
           {% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}
-          –
+          &ndash;
           {% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %}
         </span>
 
@@ -74,15 +91,18 @@
           {% endif %}
 
           {# Age #}
-          {% if filters.age_from or filters.age_to %}
+          {% if age_group_labels %}
+            <span class="badge text-bg-primary text-wrap" style="max-width: 100%; overflow-wrap: anywhere;">
+              Age: {{ age_group_labels|join:", " }}
+            </span>
+          {% elif filters.age_from or filters.age_to %}
             <span class="badge text-bg-primary">
               Age:
               {% if filters.age_from %}{{ filters.age_from }}{% else %}Any{% endif %}
-              –
+              &ndash;
               {% if filters.age_to %}{{ filters.age_to }}{% else %}Any{% endif %}
             </span>
           {% endif %}
-
           {# Race/ethnicity #}
           {% if filters.race_ethnicity and filters.race_ethnicity.0 %}
             <span class="badge text-bg-primary">
@@ -123,9 +143,9 @@
           {% endif %}
 
           {# If nothing was selected #}
-          {% if filters.sex == "all" and not filters.age_from and not filters.age_to and not filters.race_ethnicity and not filters.race and not filters.cancer_types %}
+          {% if filters.sex == "all" and not age_group_labels and not filters.age_from and not filters.age_to and not filters.race_ethnicity and not filters.race and not filters.cancer_types %}
             <span class="text-muted small">No demographic filters applied.</span>
-          {% elif not filters.sex and not filters.age_from and not filters.age_to and not filters.race_ethnicity and not filters.race and not filters.cancer_types %}
+          {% elif not filters.sex and not age_group_labels and not filters.age_from and not filters.age_to and not filters.race_ethnicity and not filters.race and not filters.cancer_types %}
             <span class="text-muted small">No demographic filters applied.</span>
           {% endif %}
         </div>
@@ -145,7 +165,7 @@
         <div class="d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
               {{ dataset_title|default:"Selected measures by geography" }}
-              ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}–{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %})
+              ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}&ndash;{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %})
             </h5>
           <a class="btn btn-outline-primary btn-sm" href="{% url 'popcase:export_geo_dataset_csv' %}">
             Download Results (CSV)
@@ -172,63 +192,32 @@
     <table class="table table-sm table-striped align-middle mb-0 results-table" style="min-width: 1200px;">
       <thead class="table-light">
         <tr>
-          {% if dataset_columns %}
-            {% for key in dataset_columns %}
-              {% if key == "label" %}
-                <th data-sort="string"
-                    class="sortable bg-light"
-                    style="position: sticky; left: 0; z-index: 5;">
-                  {{ dataset_header_map|get_item:key|default:key }}
-                  <span></span>
-                </th>
-              {% else %}
-                {% if key in dataset_numeric_cols %}
-                  <th data-sort="number"
-                      class="sortable text-end"
-                      style="min-width: 8rem;">
-                    {{ dataset_header_map|get_item:key|default:key }}
-                    <span></span>
-                  </th>
-                {% else %}
-                  <th data-sort="string"
-                      class="sortable"
-                      style="min-width: 8rem;">
-                    {{ dataset_header_map|get_item:key|default:key }}
-                    <span></span>
-                  </th>
-                {% endif %}
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            {% for key, val in dataset_rows.0.items %}
-              {% if key in dataset_exclude_columns %}
-              {% elif key == "label" %}
-                <th data-sort="string"
-                    class="sortable bg-light"
-                    style="position: sticky; left: 0; z-index: 5;">
-                  {{ dataset_header_map|get_item:key|default:key }}
-                  <span></span>
-                </th>
-              {% else %}
-                {% if key in dataset_numeric_cols %}
-                  <th data-sort="number"
-                      class="sortable text-end"
-                      style="min-width: 8rem;">
-                    {{ dataset_header_map|get_item:key|default:key }}
-                    <span></span>
-                  </th>
-                {% else %}
-                  <th data-sort="string"
-                      class="sortable"
-                      style="min-width: 8rem;">
-                    {{ dataset_header_map|get_item:key|default:key }}
-                    <span></span>
-                  </th>
-                {% endif %}
-              {% endif %}
-            {% endfor %}
-          {% endif %}
+          {% for cell in dataset_header_rows.top %}
+            <th{% if cell.key %} data-sort="{{ cell.sort_type }}" data-column-index="{{ cell.col_index }}"{% endif %}
+                colspan="{{ cell.col_span }}"
+                rowspan="{{ cell.row_span }}"
+                class="{{ cell.classes }}"
+                style="{% if cell.key and cell.key != 'label' %}min-width: 8rem;{% endif %}">
+              {{ cell.label }}
+              {% if cell.key %}<span></span>{% endif %}
+            </th>
+          {% endfor %}
         </tr>
+        {% if dataset_header_rows.has_groups %}
+          <tr>
+            {% for cell in dataset_header_rows.leaf %}
+              <th data-sort="{{ cell.sort_type }}"
+                  data-column-index="{{ cell.col_index }}"
+                  colspan="{{ cell.col_span }}"
+                  rowspan="{{ cell.row_span }}"
+                  class="{{ cell.classes }}"
+                  style="{% if cell.key != 'label' %}min-width: 8rem;{% endif %}">
+                {{ cell.label }}
+                <span></span>
+              </th>
+            {% endfor %}
+          </tr>
+        {% endif %}
       </thead>
 
       <tbody>
@@ -236,18 +225,18 @@
           <tr>
             {% if dataset_columns %}
               {% for key in dataset_columns %}
-                {% with val=row|get_item:key %}
+                {% with val=row|get_item:key column_class=dataset_column_classes|get_item:key %}
                   {% if key == "label" %}
                     <td class="bg-white"
                         style="position: sticky; left: 0; z-index: 2; white-space: nowrap;">
                       {{ val }}
                     </td>
                   {% elif key == "tract_geoid" or key == "geoid" %}
-                    <td style="white-space: nowrap;">{{ val }}</td>
+                    <td class="{{ column_class }}" style="white-space: nowrap;">{{ val }}</td>
                   {% else %}
-                    <td class="text-end" style="white-space: nowrap;">
+                    <td class="text-end {{ column_class }}" style="white-space: nowrap;">
                       {% if val is None or val == "" %}
-                        <span class="text-muted">—</span>
+                        <span class="text-muted">&mdash;</span>
                       {% elif key == "total_population" or key == "total_population_ci_lower" or key == "total_population_ci_upper" or key == "median_household_income" or key == "median_household_income_ci_lower" or key == "median_household_income_ci_upper" or key == "case_count" or key == "n_total_staged_unstaged" or key == "male_population" or key == "female_population" or key == "mammography_facility_count_20mi" %}
                         {{ val|intcomma }}
                       {% else %}
@@ -270,7 +259,7 @@
                 {% else %}
                   <td class="text-end" style="white-space: nowrap;">
                     {% if val is None %}
-                      <span class="text-muted">—</span>
+                      <span class="text-muted">&mdash;</span>
                     {% elif key == "total_population" or key == "total_population_ci_lower" or key == "total_population_ci_upper" or key == "median_household_income" or key == "median_household_income_ci_lower" or key == "median_household_income_ci_upper" or key == "case_count" or key == "n_total_staged_unstaged" or key == "male_population" or key == "female_population" or key == "mammography_facility_count_20mi" %}
                       {{ val|intcomma }}
                     {% else %}
@@ -292,7 +281,7 @@
 {% else %}
   <p class="text-muted mt-3">
     No outcomes found for the selected filters
-    ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}–{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %}).
+    ({% if filters.dx_start %}{{ filters.dx_start }}{% else %}2011{% endif %}&ndash;{% if filters.dx_end %}{{ filters.dx_end }}{% else %}2022{% endif %}).
   </p>
 {% endif %}
       {% else %}
@@ -351,7 +340,7 @@
                         {% if row.age_adjusted_per_100k is not None %}
                           {{ row.age_adjusted_per_100k }}
                         {% else %}
-                          <span class="text-muted">—</span>
+                          <span class="text-muted">&mdash;</span>
                         {% endif %}
                       </td>
                     </tr>
@@ -375,9 +364,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const headers = Array.from(table.querySelectorAll("th[data-sort]"));
     if (!headers.length) return;
 
-    headers.forEach((header, colIndex) => {
+    headers.forEach((header, fallbackColIndex) => {
       header.dataset.asc = "true";
       header.addEventListener("click", () => {
+        const parsedColIndex = Number.parseInt(header.dataset.columnIndex || "", 10);
+        const colIndex = Number.isFinite(parsedColIndex) ? parsedColIndex : fallbackColIndex;
         const tbody = table.querySelector("tbody");
         if (!tbody) return;
 
@@ -401,7 +392,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
 
         table.querySelectorAll("th span").forEach((s) => { s.textContent = ""; });
-        header.querySelector("span").textContent = asc ? " ▲" : " ▼";
+        header.querySelector("span").textContent = asc ? " " + String.fromCharCode(9650) : " " + String.fromCharCode(9660);
         header.dataset.asc = asc ? "false" : "true";
         rows.forEach((row) => tbody.appendChild(row));
       });
