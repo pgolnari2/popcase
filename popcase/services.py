@@ -678,7 +678,155 @@ def load_cancer_logic():
 # 2️⃣ Cancer Logic Engine
 # =========================================================
 
+class CancerQueryScriptError(ValueError):
+    """Raised when a cancer QueryScript is not in the supported grammar."""
+
+
+_CANCER_QUERY_TOKEN_RE = re.compile(
+    r"\s*(?:(?P<string>'[^']*')|(?P<number>\d+)|(?P<word>[A-Za-z_][A-Za-z0-9_]*\b)|(?P<symbol>[(),=<>]))"
+)
+
+_CANCER_QUERY_FIELDS = {
+    "psite": "primary_site",
+    "histtypeicdo3": "hist_o3",
+    "dx year": "dx_year",
+    "ersummary": "er_summ",
+    "her2overallsumm": "her_summ",
+    "ssf16": "ssf16",
+}
+
+
+def _tokenize_cancer_queryscript(script):
+    tokens = []
+    pos = 0
+    while pos < len(script):
+        match = _CANCER_QUERY_TOKEN_RE.match(script, pos)
+        if not match:
+            if script[pos:].strip():
+                raise CancerQueryScriptError(
+                    f"Unexpected text at character {pos}: {script[pos:pos + 20]!r}"
+                )
+            break
+        kind = match.lastgroup
+        value = match.group(kind)
+        if kind == "string":
+            tokens.append(("VALUE", value[1:-1]))
+        elif kind == "number":
+            tokens.append(("VALUE", value))
+        elif kind == "word":
+            tokens.append(("WORD", value.lower()))
+        else:
+            tokens.append((value, value))
+        pos = match.end()
+    return tokens
+
+
+class _CancerQueryScriptParser:
+    """Small, non-evaluating parser for the expressions in cancer_site_logic.csv."""
+
+    def __init__(self, script):
+        self.tokens = _tokenize_cancer_queryscript(script)
+        self.pos = 0
+
+    def parse(self):
+        if not self.tokens:
+            raise CancerQueryScriptError("QueryScript is empty")
+        result = self._parse_or()
+        if self.pos != len(self.tokens):
+            raise CancerQueryScriptError(f"Unexpected token {self.tokens[self.pos][1]!r}")
+        return result
+
+    def _peek(self, kind=None, value=None):
+        if self.pos >= len(self.tokens):
+            return False
+        token_kind, token_value = self.tokens[self.pos]
+        return (kind is None or token_kind == kind) and (value is None or token_value == value)
+
+    def _take(self, kind=None, value=None):
+        if not self._peek(kind, value):
+            expected = value or kind
+            actual = self.tokens[self.pos][1] if self.pos < len(self.tokens) else "end of expression"
+            raise CancerQueryScriptError(f"Expected {expected}, found {actual!r}")
+        token = self.tokens[self.pos]
+        self.pos += 1
+        return token[1]
+
+    def _parse_or(self):
+        result = self._parse_and()
+        while self._peek("WORD", "or"):
+            self._take("WORD", "or")
+            result |= self._parse_and()
+        return result
+
+    def _parse_and(self):
+        result = self._parse_not()
+        while self._peek("WORD", "and"):
+            self._take("WORD", "and")
+            result &= self._parse_not()
+        return result
+
+    def _parse_not(self):
+        if self._peek("WORD", "not"):
+            self._take("WORD", "not")
+            return ~self._parse_not()
+        if self._peek("("):
+            self._take("(")
+            result = self._parse_or()
+            self._take(")")
+            return result
+        return self._parse_comparison()
+
+    def _parse_field(self):
+        first = self._take("WORD")
+        name = first
+        if first == "dx" and self._peek("WORD", "year"):
+            name += " " + self._take("WORD", "year")
+        try:
+            return _CANCER_QUERY_FIELDS[name]
+        except KeyError as exc:
+            raise CancerQueryScriptError(f"Unsupported field {name!r}") from exc
+
+    def _parse_value(self):
+        return self._take("VALUE")
+
+    def _parse_comparison(self):
+        field = self._parse_field()
+        if self._peek("WORD", "between"):
+            self._take("WORD", "between")
+            low = self._parse_value()
+            self._take("WORD", "and")
+            high = self._parse_value()
+            return Q(**{f"{field}__gte": low, f"{field}__lte": high})
+        if self._peek("WORD", "in"):
+            self._take("WORD", "in")
+            self._take("(")
+            values = [self._parse_value()]
+            while self._peek(","):
+                self._take(",")
+                values.append(self._parse_value())
+            self._take(")")
+            return Q(**{f"{field}__in": values})
+
+        operator = self._take()
+        if operator not in {"=", "<", ">"}:
+            raise CancerQueryScriptError(f"Unsupported comparison operator {operator!r}")
+        if self._peek("=") and operator in {"<", ">"}:
+            operator += self._take("=")
+        value = self._parse_value()
+        lookup = {"=": field, "<": f"{field}__lt", "<=": f"{field}__lte",
+                  ">": f"{field}__gt", ">=": f"{field}__gte"}[operator]
+        return Q(**{lookup: value})
+
+
+def parse_cancer_queryscript(script):
+    """Translate a validated QueryScript expression to a Django Q object."""
+    return _CancerQueryScriptParser(str(script or "")).parse()
+
 def apply_cancer_logic(base_qs, logic_row):
+    query_script = (logic_row.get("QueryScript") or "").strip()
+    if query_script:
+        return base_qs.filter(parse_cancer_queryscript(query_script))
+
     qs = base_qs
     qs = _apply_psite_include(qs, logic_row.get("psite_include"))
     qs = _apply_psite_exclude(qs, logic_row.get("psite_exclude"))
