@@ -1610,7 +1610,15 @@ def _acs_moe_95(moe_90):
     PopCASE "95% CI" display language.
     """
     moe = _safe_num(moe_90)
-    return None if moe is None else moe * ACS_90_TO_95
+    if moe is None:
+        return None
+    # ACS uses negative numeric sentinels (including -555555555) when an MOE
+    # is unavailable/not applicable.  An MOE itself cannot be negative.  The
+    # FR44 rule is to treat those sentinels as zero rather than allowing them
+    # to create enormous or reversed confidence bounds.
+    if moe < 0:
+        moe = 0.0
+    return moe * ACS_90_TO_95
 
 
 def _acs_estimate_ci(estimate, moe_90, floor_zero=True, ndigits=2):
@@ -2569,6 +2577,67 @@ def _age_adjusted_requested_for_token(token, display_options):
         for option in display_options
     )
 
+
+SUPPORT_COMPONENT_CI_KEYS = {
+    "sex_distribution": {
+        "male_pct_ci_lower", "male_pct_ci_upper",
+        "female_pct_ci_lower", "female_pct_ci_upper",
+        "sex_distribution_ci_lower", "sex_distribution_ci_upper",
+    },
+    "race_eth": {
+        "white_alone_ci_lower", "white_alone_ci_upper",
+        "black_alone_ci_lower", "black_alone_ci_upper",
+        "aian_alone_ci_lower", "aian_alone_ci_upper",
+        "asian_alone_ci_lower", "asian_alone_ci_upper",
+        "nhpi_alone_ci_lower", "nhpi_alone_ci_upper",
+        "other_race_alone_ci_lower", "other_race_alone_ci_upper",
+        "multiracial_ci_lower", "multiracial_ci_upper",
+        "nh_white_ci_lower", "nh_white_ci_upper",
+        "hispanic_ci_lower", "hispanic_ci_upper",
+        "race_eth_ci_lower", "race_eth_ci_upper",
+    },
+    "employment_16plus": {
+        "employment_16plus_ci_lower", "employment_16plus_ci_upper",
+        "employment_labor_force_ci_lower", "employment_labor_force_ci_upper",
+        "employment_employed_ci_lower", "employment_employed_ci_upper",
+        "employment_unemployed_ci_lower", "employment_unemployed_ci_upper",
+        "employment_not_in_labor_force_ci_lower", "employment_not_in_labor_force_ci_upper",
+    },
+    "occupation_dist": {
+        "occupation_distribution_ci_lower", "occupation_distribution_ci_upper",
+        "occupation_management_business_science_arts_ci_lower", "occupation_management_business_science_arts_ci_upper",
+        "occupation_service_ci_lower", "occupation_service_ci_upper",
+        "occupation_sales_office_ci_lower", "occupation_sales_office_ci_upper",
+        "occupation_natural_resources_construction_maintenance_ci_lower", "occupation_natural_resources_construction_maintenance_ci_upper",
+        "occupation_production_transportation_material_moving_ci_lower", "occupation_production_transportation_material_moving_ci_upper",
+    },
+}
+
+def _remove_output_key_and_period_variants(out, base_key):
+    """Remove an output key and historical variants such as key__acs_2019_2023."""
+    out.pop(base_key, None)
+    period_prefix = f"{base_key}__"
+    for key in list(out):
+        if key.startswith(period_prefix):
+            out.pop(key, None)
+
+
+def _apply_display_option_contract(out, support_measures, display_options):
+    """Keep optional CI/age-adjusted columns only when their UI option is selected."""
+    display_options = set(display_options or [])
+
+    for token in support_measures:
+        spec = SUPPORT_MEASURE_OUTPUT_SPECS.get(token)
+        if not spec:
+            continue
+
+        _, ci_low_key, ci_high_key, age_adjusted_key = spec
+        if not _ci_requested_for_token(token, display_options):
+            for key in {ci_low_key, ci_high_key} | SUPPORT_COMPONENT_CI_KEYS.get(token, set()):
+                _remove_output_key_and_period_variants(out, key)
+
+        if age_adjusted_key and not _age_adjusted_requested_for_token(token, display_options):
+            _remove_output_key_and_period_variants(out, age_adjusted_key)
 
 def _add_display_option_columns(out, support_measures, display_options, source_values=None):
     """
@@ -4967,6 +5036,11 @@ def _build_geo_dataset_uncached(
             support_measures=support_measures,
             display_options=display_options,
             source_values=out,
+        )
+        _apply_display_option_contract(
+            out,
+            support_measures=support_measures,
+            display_options=display_options,
         )
 
         rows.append(out)
