@@ -153,7 +153,6 @@
                 </div>
               </div>
 
-            {% if geographic_level == "county" or geographic_level == "tract" %}
               <div class="form-check mt-2">
                 {{ form.disease_measures.7.tag }}
                 <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">Crude incidence rate (per 100,000)</label>
@@ -197,7 +196,6 @@
                   <label class="form-check-label" for="{{ form.disease_measures.14.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
-            {% endif %}
 
             {% if prostate_selected %}
               <div class="form-check mt-2">
@@ -216,7 +214,7 @@
               </div>
             {% else %}
               <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_15" disabled {% if gleason_selected %}checked{% endif %}>
+                <input type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_15" disabled {% if gleason_selected %}checked{% endif %}>
                 <label class="form-check-label text-muted" for="id_disease_measures_15">
                   Mean Gleason Score (Prostate cancer only)
                   <span class="small">(enable by selecting Prostate in Filters → Cancer Type(s))</span>
@@ -224,7 +222,7 @@
               </div>
               <div class="ms-4">
                 <div class="form-check">
-                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason_ci" id="id_disease_measures_16" disabled>
+                  <input type="checkbox" name="disease_measures" value="gleason_ci" id="id_disease_measures_16" disabled>
                   <label class="form-check-label text-muted" for="id_disease_measures_16">
                     95% Confidence Interval
                   </label>
@@ -315,7 +313,6 @@
                 </div>
               </div>
 
-            {% if geographic_level == "county" or geographic_level == "tract" %}
               <div class="form-check mt-2">
                 {{ form.disease_measures.7.tag }}
                 <label class="form-check-label" for="{{ form.disease_measures.7.id_for_label }}">Crude incidence rate (per 100,000)</label>
@@ -359,7 +356,6 @@
                   <label class="form-check-label" for="{{ form.disease_measures.14.id_for_label }}">95% Confidence Interval</label>
                 </div>
               </div>
-            {% endif %}
 
               {% if prostate_selected %}
                 <div class="form-check mt-2">
@@ -374,7 +370,7 @@
                 </div>
               {% else %}
                 <div class="form-check mt-2">
-                  <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_15" disabled {% if gleason_selected %}checked{% endif %}>
+                  <input type="checkbox" name="disease_measures" value="gleason" id="id_disease_measures_15" disabled {% if gleason_selected %}checked{% endif %}>
                   <label class="form-check-label text-muted" for="id_disease_measures_15">
                     Mean Gleason Score (Prostate cancer only)
                     <span class="small">(enable by selecting Prostate in Filters → Cancer Type(s))</span>
@@ -382,7 +378,7 @@
                 </div>
                 <div class="ms-4">
                   <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="disease_measures" value="gleason_ci" id="id_disease_measures_16" disabled>
+                    <input type="checkbox" name="disease_measures" value="gleason_ci" id="id_disease_measures_16" disabled>
                     <label class="form-check-label text-muted" for="id_disease_measures_16">95% Confidence Interval</label>
                   </div>
                 </div>
@@ -483,10 +479,6 @@
                   {{ form.access_comm_tract_survey_ci }}
                   <label class="form-check-label" for="{{ form.access_comm_tract_survey_ci.id_for_label }}" style="color: #4477f8; font-style: italic">Display 95% Confidence Intervals</label>
                 </div>
-                <div class="form-check measure-sub-option">
-                  {{ form.access_comm_tract_survey_age_adjusted }}
-                  <label class="form-check-label" for="{{ form.access_comm_tract_survey_age_adjusted.id_for_label }}" style="color: #4477f8; font-style: italic">Display age-adjusted measures</label>
-                </div>
                 <div class="ms-3">
                   {% for cb in form.access_comm_tract %}
                     {% if forloop.counter0 >= 6 %}
@@ -498,7 +490,7 @@
             </div>
           </div>
 
-        {% elif geographic_level == "zcta" or geographic_level == "place" %}
+        {% elif geographic_level == "zcta" %}
           <div class="col-12">
             <div class="card shadow-sm">
               <div class="card-body popcase-tree select-all-scope">
@@ -514,6 +506,36 @@
                 <div class="form-check measure-sub-option">
                   {{ form.access_comm_zcta_place_survey_ci }}
                   <label class="form-check-label" for="{{ form.access_comm_zcta_place_survey_ci.id_for_label }}" style="color: #4477f8; font-style: italic">Display 95% Confidence Intervals</label>
+                </div>
+                <div class="ms-3">
+                  {% for cb in form.access_comm_zcta_place %}
+                    <div class="form-check">{{ cb.tag }} <label class="form-check-label" for="{{ cb.id_for_label }}">{{ cb.choice_label }}</label></div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+        {% elif geographic_level == "place" %}
+          <div class="col-12">
+            <div class="card shadow-sm">
+              <div class="card-body popcase-tree select-all-scope">
+                <div class="measure-heading-inline">
+                  <h6 class="text-uppercase text-secondary">Access to care for communities</h6>
+                  <div class="form-check measure-select-all">
+                    <input class="form-check-input select-all-master" type="checkbox" id="select_all_access_place">
+                    <label class="form-check-label" for="select_all_access_place">Select all</label>
+                  </div>
+                </div>
+
+                <div class="fw-semibold">Survey-based community access measures</div>
+                <div class="form-check measure-sub-option">
+                  {{ form.access_comm_zcta_place_survey_ci }}
+                  <label class="form-check-label" for="{{ form.access_comm_zcta_place_survey_ci.id_for_label }}" style="color: #4477f8; font-style: italic">Display 95% Confidence Intervals</label>
+                </div>
+                <div class="form-check measure-sub-option">
+                  {{ form.access_comm_place_survey_age_adjusted }}
+                  <label class="form-check-label" for="{{ form.access_comm_place_survey_age_adjusted.id_for_label }}" style="color: #4477f8; font-style: italic">Display age-adjusted measures</label>
                 </div>
                 <div class="ms-3">
                   {% for cb in form.access_comm_zcta_place %}
@@ -617,7 +639,6 @@
                 {% if geographic_level == "place" or geographic_level == "zcta" %}
                   <div class="form-check">
                     <input
-                      class="form-check-input"
                       type="checkbox"
                       id="{{ form.community_characteristics.10.id_for_label }}"
                       disabled
@@ -636,7 +657,6 @@
                   </div>
                 {% endif %}
               </div>
-              </div>
 
               <div class="mt-3 fw-semibold">Economic</div>
               <div class="form-check measure-sub-option">
@@ -654,13 +674,18 @@
                 <div class="form-check">{{ form.community_characteristics.18.tag }} <label class="form-check-label" for="{{ form.community_characteristics.18.id_for_label }}">Housing insecurity in the past 12 months among adults</label></div>
                 <div class="form-check">{{ form.community_characteristics.19.tag }} <label class="form-check-label" for="{{ form.community_characteristics.19.id_for_label }}">Occupational category distribution</label></div>
                 <div class="form-check">{{ form.community_characteristics.20.tag }} <label class="form-check-label" for="{{ form.community_characteristics.20.id_for_label }}">GINI Index</label></div>
-                <div class="form-check">{{ form.community_characteristics.21.tag }} <label class="form-check-label" for="{{ form.community_characteristics.21.id_for_label }}">Historic Redlining Index</label></div>
+                <div class="form-check">
+                  <input type="checkbox" name="community_characteristics" value="redlined_pct" id="{{ form.community_characteristics.21.id_for_label }}" disabled>
+                  <label class="form-check-label text-muted" for="{{ form.community_characteristics.21.id_for_label }}">
+                    % of population living in formerly redlined neighborhoods
+                    <span class="small">(not available in this version)</span>
+                  </label>
+                </div>
                 
                 <!-- If  Place is chosen as a geographic level then grey out SVI -->
                 {% if geographic_level == "place" %}
                   <div class="form-check">
                     <input
-                      class="form-check-input"
                       type="checkbox"
                       id="{{ form.community_characteristics.22.id_for_label }}"
                       disabled

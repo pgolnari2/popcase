@@ -57,16 +57,6 @@ SUPPORTED_DISEASE_MEASURES = {
     "gleason",
     "gleason_ci",
 }
-RATE_ONLY_FOR_COUNTY_TRACT = {
-    "crude_inc_rate",
-    "crude_inc_ci",
-    "crude_mort_rate",
-    "crude_mort_ci",
-    "inc_rate",
-    "inc_ci",
-    "mort_rate",
-    "mort_ci",
-}
 NORMALIZED_TOTAL_LEVELS = {None, "", "none", "total", "do_not_compare", "no_compare"}
 
 CI_DISPLAY_OPTION_FIELDS = {
@@ -84,7 +74,7 @@ CI_DISPLAY_OPTION_FIELDS = {
 }
 
 AGE_ADJUST_DISPLAY_OPTION_FIELDS = {
-    "access_comm_tract_survey_age_adjusted",
+    "access_comm_place_survey_age_adjusted",
     "access_comm_county_survey_age_adjusted",
 }
 
@@ -397,10 +387,10 @@ SUPPORT_DISPLAY_HEADER_MAP = {
     "gini_index": "GINI Index",
     "gini_ci_lower": "GINI Index CI 95% (L)",
     "gini_ci_upper": "GINI Index CI 95% (U)",
-    "redlined_pct": "Historic Redlining Index",
+    "redlined_pct": "% of population living in formerly redlined neighborhoods",
     "ranked_historic_redlining_index": "Ranked Historic Redlining Index",
-    "redlined_ci_lower": "Historic Redlining Index CI 95% (L)",
-    "redlined_ci_upper": "Historic Redlining Index CI 95% (U)",
+    "redlined_ci_lower": "% of population living in formerly redlined neighborhoods CI 95% (L)",
+    "redlined_ci_upper": "% of population living in formerly redlined neighborhoods CI 95% (U)",
     "svi_adi": "% population in ADI deciles 9-10",
     "adi_pct_deciles_9_10": "% population in ADI deciles 9-10",
     "adi_population_deciles_9_10": "Population in ADI deciles 9-10",
@@ -644,10 +634,10 @@ def _get_age_group_labels(age_groups, geographic_level: str):
     return [choices.get(value, value) for value in _coerce_to_list(age_groups) if value]
 
 def _filter_disease_measures_for_geography(disease_measures, geographic_level: str):
-    disease_measures = _coerce_to_list(disease_measures)
-    if geographic_level in {"county", "tract"}:
-        return disease_measures
-    return [m for m in disease_measures if m not in RATE_ONLY_FOR_COUNTY_TRACT]
+    # The SDD defines the same Disease-Focused measure choices for County,
+    # Place, ZCTA, and Census Tract. Geography changes the age-adjustment
+    # method, not which crude or age-adjusted rate choices are available.
+    return _coerce_to_list(disease_measures)
 
 
 def _get_preview_row_limit(request):
@@ -804,11 +794,20 @@ def _build_preferred_dataset_columns(disease_measures, support_measures, display
         columns.extend(_support_columns_for_token(token, display_options))
     return list(dict.fromkeys(columns))
 
-def _get_display_options(measures_state: dict):
+def _get_display_options(measures_state: dict, geographic_level=None):
     display_options = []
     for field in sorted(CI_DISPLAY_OPTION_FIELDS | AGE_ADJUST_DISPLAY_OPTION_FIELDS):
         if measures_state.get(field):
             display_options.append(field)
+    valid_age_adjusted_field = {
+        "county": "access_comm_county_survey_age_adjusted",
+        "place": "access_comm_place_survey_age_adjusted",
+    }.get(geographic_level)
+    display_options = [
+        field
+        for field in display_options
+        if field not in AGE_ADJUST_DISPLAY_OPTION_FIELDS or field == valid_age_adjusted_field
+    ]
     return display_options
 
 
@@ -1002,6 +1001,8 @@ def wizard_step(request, step: str = "geographic-level"):
     form_kwargs = {"initial": None if request.method == "POST" else initial}
     if step == "filters":
         form_kwargs["geographic_level"] = _normalize_geographic_level(_session_get(request, "geographic_level", "none"))
+    if step == "measures":
+        form_kwargs["geographic_level"] = _normalize_geographic_level(_session_get(request, "geographic_level", "none"))
     form = FormClass(request.POST or None, **form_kwargs)
     if step == "filters":
         form.fields["cancer_types"].choices = leaf_choices
@@ -1065,7 +1066,7 @@ def results(request):
     measures_state = wizard.get("measures", {}) or {}
 
     disease_measures, support_measures = _get_measure_selections(measures_state, geographic_level)
-    display_options = _get_display_options(measures_state)
+    display_options = _get_display_options(measures_state, geographic_level)
     community_timeframes = _get_community_timeframes(measures_state)
     disease_measures = _filter_disease_measures_for_geography(disease_measures, geographic_level)
     year = str(_latest_linking_year())
@@ -1219,7 +1220,7 @@ def export_geo_dataset_csv(request):
     geographic_level = _normalize_geographic_level(wizard.get("geographic_level", "county"))
     measures_state = wizard.get("measures", {}) or {}
     disease_measures, support_measures = _get_measure_selections(measures_state, geographic_level)
-    display_options = _get_display_options(measures_state)
+    display_options = _get_display_options(measures_state, geographic_level)
     community_timeframes = _get_community_timeframes(measures_state)
     disease_measures = _filter_disease_measures_for_geography(disease_measures, geographic_level)
 

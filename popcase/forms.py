@@ -77,7 +77,7 @@ MEASURE_COMMUNITY_CHOICES = [
     ("poverty_pct", "% of households below poverty level"),
     ("snap_pct", "% of households receiving Food stamps/SNAP"),
     ("gini", "GINI Index"),
-    ("redlined_pct", "Historic Redlining Index"),
+    ("redlined_pct", "% of population living in formerly redlined neighborhoods"),
     ("smoking", "Current cigarette smoking (Adults only)"),
     ("obesity", "Obesity (Adults only)"),
     ("no_leisure_pa", "No leisure-time physical activity (Adults only)"),
@@ -380,7 +380,7 @@ class MeasuresForm(forms.Form):
         ("housing_insecurity", "Housing insecurity in the past 12 months among adults"),
         ("occupation_dist", "Occupational category distribution"),
         ("gini", "GINI Index"),
-        ("redlined_pct", "Historic Redlining Index"),
+        ("redlined_pct", "% of population living in formerly redlined neighborhoods"),
         ("svi_adi", "Social Vulnerability Index / ADI"),
     ]
     COMMUNITY_HOUSING_LEAVES = [
@@ -504,14 +504,14 @@ class MeasuresForm(forms.Form):
         label="Display 95% Confidence Intervals",
         widget=ci_checkbox_widget,
     )
-    access_comm_tract_survey_age_adjusted = forms.BooleanField(
-        required=False,
-        label="Display age-adjusted measures",
-        widget=ci_checkbox_widget,
-    )
     access_comm_zcta_place_survey_ci = forms.BooleanField(
         required=False,
         label="Display 95% Confidence Intervals",
+        widget=ci_checkbox_widget,
+    )
+    access_comm_place_survey_age_adjusted = forms.BooleanField(
+        required=False,
+        label="Display age-adjusted measures",
         widget=ci_checkbox_widget,
     )
     access_comm_county_survey_ci = forms.BooleanField(
@@ -563,8 +563,35 @@ class MeasuresForm(forms.Form):
         "community_characteristics",
     )
 
+    def __init__(self, *args, **kwargs):
+        geographic_level = kwargs.pop("geographic_level", None)
+        super().__init__(*args, **kwargs)
+
+        # FR41 availability matrix:
+        #   County -> show county age-adjusted option
+        #   Place  -> show place age-adjusted option
+        #   Tract/ZCTA -> no age-adjusted option
+        allowed_age_adjusted_field = {
+            "county": "access_comm_county_survey_age_adjusted",
+            "place": "access_comm_place_survey_age_adjusted",
+        }.get(geographic_level)
+        for field_name in (
+            "access_comm_county_survey_age_adjusted",
+            "access_comm_place_survey_age_adjusted",
+        ):
+            if field_name != allowed_age_adjusted_field:
+                self.fields.pop(field_name, None)
+
     def clean(self):
         cleaned = super().clean()
+        # FR16: Historic Redlining is deferred to a later version. Ignore a
+        # stale session or crafted POST value in addition to disabling it in
+        # the Measures UI.
+        cleaned["community_characteristics"] = [
+            token
+            for token in cleaned.get("community_characteristics", [])
+            if token != "redlined_pct"
+        ]
         has_measure = any(cleaned.get(field) for field in self.MEASURE_SELECTION_FIELDS)
         if not has_measure:
             raise forms.ValidationError("One or more measures must be chosen in order to proceed.")

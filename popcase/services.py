@@ -1425,7 +1425,7 @@ CI_DISPLAY_OPTION_TO_TOKENS = {
 }
 
 AGE_ADJUST_DISPLAY_OPTION_TO_TOKENS = {
-    "access_comm_tract_survey_age_adjusted": {"routine_checkup", "no_transport", "no_insurance", "dentist"},
+    "access_comm_place_survey_age_adjusted": {"routine_checkup", "no_transport", "no_insurance", "dentist"},
     "access_comm_county_survey_age_adjusted": {"routine_checkup", "no_transport", "no_insurance", "dentist"},
 }
 
@@ -5632,6 +5632,37 @@ def _safe_literal_eval(s):
         return None
 
 
+@lru_cache(maxsize=1)
+def _get_place_name_lookup():
+    """Return normalized Place FIPS -> display name from CDC PLACES."""
+    table_name = CDCPlacesPlace2024._meta.db_table
+    try:
+        rows, aliases = _select_columns_from_table(
+            table_name,
+            {
+                "geoid": CDC_PLACES_GEOID_CANDIDATES_BY_GEO["place"],
+                # LocationName contains the readable name; PlaceName in the
+                # current table contains the numeric Place FIPS again.
+                "name": ["LocationName", "NAME", "Name"],
+            },
+        )
+    except Exception:
+        return {}
+
+    geoid_col = aliases.get("geoid")
+    name_col = aliases.get("name")
+    if not geoid_col or not name_col:
+        return {}
+
+    lookup = {}
+    for row in rows:
+        geoid = _normalize_places_geoid(row.get(geoid_col), "place")
+        name = str(row.get(name_col) or "").strip()
+        if geoid and name:
+            lookup[geoid] = name
+    return lookup
+
+
 def _geo_label(geographic_level: str, geoid: str) -> str:
     if geographic_level == "county":
         nm = OHIO_COUNTY_NAMES.get(geoid)
@@ -5640,6 +5671,8 @@ def _geo_label(geographic_level: str, geoid: str) -> str:
         return f"Census Tract {geoid}"
     if geographic_level == "zcta":
         return f"ZIP {geoid}"
+    if geographic_level == "place":
+        return _get_place_name_lookup().get(str(geoid).strip(), f"Place {geoid}")
     return str(geoid)
 
 
