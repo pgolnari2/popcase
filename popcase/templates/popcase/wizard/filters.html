@@ -54,8 +54,18 @@
                 </div>
                 <div class="mb-3">
                   <label class="form-label d-block">{{ form.race_ethnicity.label }}</label>
-                  {{ form.race_ethnicity }}
+                  <div class="row row-cols-1 g-1">
+                    {% for checkbox in form.race_ethnicity %}
+                      <div class="col">
+                        <div class="form-check">
+                          {{ checkbox.tag }}
+                          <label class="form-check-label" for="{{ checkbox.id_for_label }}">{{ checkbox.choice_label }}</label>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
                   <div class="form-text">Leave blank for All.</div>
+                  {% if form.race_ethnicity.errors %}<div class="text-danger small">{{ form.race_ethnicity.errors }}</div>{% endif %}
                 </div>
               </div>
             </div>
@@ -340,36 +350,6 @@ document.addEventListener("DOMContentLoaded", function () {
   updateParent();
 });
 
-document.addEventListener("DOMContentLoaded", function () {
-  const raceInputs = Array.from(
-    document.querySelectorAll('input[name="race_ethnicity"]')
-  );
-
-  const allRace = raceInputs.find(input => input.value === "all");
-  const raceChildren = raceInputs.filter(input => input.value !== "all");
-
-  if (!allRace || !raceChildren.length) return;
-
-  function updateAllRaceState() {
-    const checkedCount = raceChildren.filter(input => input.checked).length;
-
-    allRace.checked = checkedCount === raceChildren.length;
-    allRace.indeterminate = checkedCount > 0 && checkedCount < raceChildren.length;
-  }
-
-  allRace.addEventListener("change", function () {
-    raceChildren.forEach(input => {
-      input.checked = allRace.checked;
-    });
-    allRace.indeterminate = false;
-  });
-
-  raceChildren.forEach(input => {
-    input.addEventListener("change", updateAllRaceState);
-  });
-
-  updateAllRaceState();
-});
 </script>
 
 <style>

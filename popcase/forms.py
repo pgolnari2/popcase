@@ -17,14 +17,26 @@ SEX_CHOICES = [
     ("male", "Male"),
 ]
 
-RACE_CHOICES = [
-    ("all", "All"),
+BRIDGED_RACE_CHOICES = [
     ("nh_white", "Non-Hispanic White"),
     ("nh_black", "Non-Hispanic Black"),
     ("nh_aian", "Non-Hispanic AI/AN"),
     ("nh_api", "Non-Hispanic API"),
     ("hisp_any", "Hispanic (any race)"),
 ]
+
+ZCTA_PLACE_RACE_CHOICES = [
+    ("nh_white", "Non-Hispanic White alone"),
+    ("nh_black", "Non-Hispanic Black alone"),
+    ("nh_aian", "Non-Hispanic AI/AN alone"),
+    ("nh_api", "Non-Hispanic API alone"),
+    ("nh_other", "Other Non-Hispanic"),
+    ("hisp_any", "Hispanic (any race(s))"),
+]
+
+# Retain the original name for imports outside this module. The default/no-
+# comparison, county, and tract views use the bridged categories.
+RACE_CHOICES = BRIDGED_RACE_CHOICES
 
 STAGE_CHOICES = [
     ("in_situ", "In situ"),
@@ -195,10 +207,15 @@ class FiltersForm(forms.Form):
     def get_age_group_choices_for_geography(cls, geographic_level):
         return ZCTA_PLACE_AGE_GROUP_CHOICES if geographic_level in {"zcta", "place"} else SEER_20_AGE_GROUP_CHOICES
 
+    @classmethod
+    def get_race_choices_for_geography(cls, geographic_level):
+        return ZCTA_PLACE_RACE_CHOICES if geographic_level in {"zcta", "place"} else BRIDGED_RACE_CHOICES
+
     def __init__(self, *args, **kwargs):
         geographic_level = kwargs.pop("geographic_level", "none")
         super().__init__(*args, **kwargs)
         self.fields["age_groups"].choices = self.get_age_group_choices_for_geography(geographic_level)
+        self.fields["race_ethnicity"].choices = self.get_race_choices_for_geography(geographic_level)
 
         diagnosis_quarter_choices = get_diagnosis_quarter_choices() or tuple(DX_QUARTER_FALLBACK_CHOICES)
         default_dx_start, default_dx_end = get_default_diagnosis_quarter_range()

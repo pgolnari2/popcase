@@ -109,7 +109,8 @@
               Race:
               {% for r in filters.race_ethnicity %}
                 {% if r == "nh_white" %}NH White{% elif r == "nh_black" %}NH Black{% elif r == "nh_aian" %}NH AI/AN
-                {% elif r == "nh_asian" %}NH Asian{% elif r == "nh_nhpi" %}NH NHPI{% elif r == "nh_other" %}Other
+                {% elif r == "nh_api" %}NH API{% elif r == "nh_asian" %}NH Asian{% elif r == "nh_nhpi" %}NH NHPI{% elif r == "nh_other" %}Other Non-Hispanic
+                {% elif r == "hisp_any" %}Hispanic (any race)
                 {% elif r == "unknown" or r == "nh_unknown" %}Unknown{% else %}{{ r }}{% endif %}
                 {% if not forloop.last %}, {% endif %}
               {% endfor %}
