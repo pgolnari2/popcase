@@ -15,6 +15,8 @@ from django.db.models.functions import Cast
 from django.db.models import IntegerField
 from django.db import connection, connections
 
+from .rate_statistics import RateDataUnavailable, crude_rate as exact_poisson_rate
+
 from popcase.models import (
     NaaccrData,
     NaaccrPatientCensusLinking,
@@ -1146,6 +1148,13 @@ def _get_incidence_by_geography_uncached(year, geographic_level, filters):
     year = str(year)
     filters = filters or {}
 
+    if geographic_level in {"tract", "zcta", "place"}:
+        from .incidence_rates import subcounty_incidence
+        try:
+            return subcounty_incidence(year, geographic_level, filters)
+        except RateDataUnavailable:
+            return []
+
     filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters)
     filtered_pat_ids = list(filtered_qs.values_list("mid", flat=True))
 
@@ -1236,8 +1245,9 @@ def _get_incidence_by_geography_uncached(year, geographic_level, filters):
             "crude_incidence_ci_lower": crude_lo,
             "crude_incidence_ci_upper": crude_hi,
             "age_adjusted_per_100k": age_adj if age_adj is not None else crude_rate,
-            "age_adjusted_ci_lower": age_lo,
-            "age_adjusted_ci_upper": age_hi,
+            # County adjusted CIs await Linda's Tiwari implementation.
+            "age_adjusted_ci_lower": None,
+            "age_adjusted_ci_upper": None,
         })
 
     results.sort(key=lambda x: x["incidence_per_100k"], reverse=True)
@@ -2184,11 +2194,10 @@ def _rate_ci_from_count(case_count, population, multiplier=100000.0):
     if population <= 0:
         return (None, None, None)
 
-    rate = (case_count / population) * multiplier
-    se = (math.sqrt(case_count) / population) * multiplier if case_count >= 0 else 0.0
-    lo = max(0.0, rate - 1.96 * se)
-    hi = rate + 1.96 * se
-    return (round(rate, 1), round(lo, 1), round(hi, 1))
+    try:
+        return tuple(round(value, 1) for value in exact_poisson_rate(case_count, population, multiplier))
+    except RateDataUnavailable:
+        return (None, None, None)
 
 
 def _haversine_miles(lat1, lon1, lat2, lon2):
@@ -4719,15 +4728,27 @@ def _build_geo_dataset_uncached(
     filters["dx_start"] = str(dx_start)
     filters["dx_end"] = str(dx_end)
 
+    use_subcounty_incidence = geographic_level in {"tract", "zcta", "place"} and bool(
+        disease_measures & {"crude_inc_rate", "crude_inc_ci", "inc_rate", "inc_ci",
+                            "crude_mort_rate", "crude_mort_ci", "mort_rate", "mort_ci"})
+    if use_subcounty_incidence:
+        from .incidence_rates import rate_linking_year
+        incidence_year = rate_linking_year(incidence_year or (
+            NaaccrPatientCensusLinking.objects.values_list("year", flat=True).order_by("-year").first()
+        ), geographic_level)
+
     filtered_qs = apply_naaccr_filters(NaaccrData.objects.all(), filters)
     stage_by_mid = dict(filtered_qs.values_list("mid", "stg_grp"))
     filtered_pat_ids = list(stage_by_mid.keys())
 
     linking_rows = []
     if filtered_pat_ids:
+        linking_qs = NaaccrPatientCensusLinking.objects.filter(
+            geographic_level=geographic_level, pat_id__in=filtered_pat_ids)
+        if use_subcounty_incidence:
+            linking_qs = linking_qs.filter(year=incidence_year)
         linking_rows = list(
-            NaaccrPatientCensusLinking.objects
-            .filter(geographic_level=geographic_level, pat_id__in=filtered_pat_ids)
+            linking_qs
             .values_list("pat_id", "geoid")
             .distinct()
         )
@@ -4811,6 +4832,16 @@ def _build_geo_dataset_uncached(
             incidence_lookup[r["geoid"]] = r
     incidence_lookup = _filter_lookup_to_scope(incidence_lookup, geographic_level, filters)
 
+    mortality_lookup = {}
+    if disease_measures & {"crude_mort_rate", "crude_mort_ci", "mort_rate", "mort_ci"}:
+        from .incidence_rates import subcounty_incidence
+        incidence_year = incidence_year or NaaccrPatientCensusLinking.objects.values_list("year", flat=True).order_by("-year").first()
+        try:
+            mortality_lookup = {r['geoid']: r for r in subcounty_incidence(
+                incidence_year, geographic_level, filters, mortality=True)}
+        except RateDataUnavailable:
+            pass  # Unknown death attribution remains unavailable, never zero.
+
     support_lookup = {}
     if support_measures:
         support_lookup = _get_geo_support_lookups(geographic_level, support_measures)
@@ -4831,7 +4862,7 @@ def _build_geo_dataset_uncached(
     )
     community_period_lookup = _filter_lookup_to_scope(community_period_lookup, geographic_level, filters)
 
-    all_geoids = set(denom_by_geo.keys()) | set(incidence_lookup.keys()) | set(tti_by_geo.keys()) | set(gleason_by_geo.keys())
+    all_geoids = set(denom_by_geo.keys()) | set(incidence_lookup.keys()) | set(mortality_lookup) | set(tti_by_geo.keys()) | set(gleason_by_geo.keys())
 
     if community_period_lookup:
         all_geoids |= set(community_period_lookup.keys())
@@ -4902,6 +4933,8 @@ def _build_geo_dataset_uncached(
 
         if ("crude_inc_rate" in disease_measures) or ("crude_inc_ci" in disease_measures) or ("inc_rate" in disease_measures) or ("inc_ci" in disease_measures):
             ir = incidence_lookup.get(geoid)
+            if ir and geographic_level in {"tract", "zcta", "place"} and "case_count" in disease_measures:
+                out["case_count"] = ir.get("case_count")
             if "crude_inc_rate" in disease_measures:
                 out["crude_incidence_per_100k"] = ir.get("crude_incidence_per_100k") if ir else None
             if "crude_inc_ci" in disease_measures:
@@ -4913,16 +4946,17 @@ def _build_geo_dataset_uncached(
                 out["inc_ci_lower_per_100k"] = ir.get("age_adjusted_ci_lower") if ir else None
                 out["inc_ci_upper_per_100k"] = ir.get("age_adjusted_ci_upper") if ir else None
 
+        mr = mortality_lookup.get(geoid, {})
         if ("crude_mort_rate" in disease_measures):
-            out["crude_mortality_per_100k"] = None
+            out["crude_mortality_per_100k"] = mr.get("crude_incidence_per_100k")
         if ("crude_mort_ci" in disease_measures):
-            out["crude_mort_ci_lower_per_100k"] = None
-            out["crude_mort_ci_upper_per_100k"] = None
+            out["crude_mort_ci_lower_per_100k"] = mr.get("crude_incidence_ci_lower")
+            out["crude_mort_ci_upper_per_100k"] = mr.get("crude_incidence_ci_upper")
         if ("mort_rate" in disease_measures):
-            out["age_adjusted_mortality_per_100k"] = None
+            out["age_adjusted_mortality_per_100k"] = mr.get("age_adjusted_per_100k")
         if ("mort_ci" in disease_measures):
-            out["mort_ci_lower_per_100k"] = None
-            out["mort_ci_upper_per_100k"] = None
+            out["mort_ci_lower_per_100k"] = mr.get("age_adjusted_ci_lower")
+            out["mort_ci_upper_per_100k"] = mr.get("age_adjusted_ci_upper")
 
         if support_lookup:
             community_row = support_lookup.get("community_acs", {}).get(geoid, {})

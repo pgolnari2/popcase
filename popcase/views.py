@@ -9,6 +9,7 @@ from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 
 from .forms import (
@@ -1076,6 +1077,15 @@ def results(request):
     cancer_type_labels = _build_cancer_type_labels(filters.get("cancer_types") or [])
     age_group_labels = _get_age_group_labels(filters.get("age_groups"), geographic_level)
 
+    if geographic_level == "tract" and set(disease_measures) & {"crude_inc_rate", "crude_inc_ci", "inc_rate", "inc_ci", "crude_mort_rate", "crude_mort_ci", "mort_rate", "mort_ci"}:
+        from .incidence_rates import validate_tract_rate_period
+        from .rate_statistics import RateDataUnavailable
+        try:
+            validate_tract_rate_period(dict(filters, dx_start=dx_start, dx_end=dx_end), year)
+        except RateDataUnavailable as exc:
+            messages.error(request, str(exc))
+            return redirect("popcase:wizard_step", step="filters")
+
     payload = _build_results_payload_cached(
         geographic_level=geographic_level,
         dx_start=dx_start,
@@ -1135,6 +1145,7 @@ def results(request):
         "dataset_is_truncated": dataset_is_truncated,
         "result_mode": result_mode,
         "disease_measures": disease_measures,
+        "mortality_requested": bool(set(disease_measures) & {"crude_mort_rate", "crude_mort_ci", "mort_rate", "mort_ci"}),
         "display_options": display_options,
         "community_timeframes": community_timeframes,
         "cancer_type_labels": cancer_type_labels,
